@@ -1,6 +1,28 @@
 # Prototype verification
 
-Version 0.2 verified November 26, 2026. Earlier version 0.1 observations are identified below.
+Version 0.3 verified November 26, 2026. Earlier observations are identified below.
+
+## Rail Gun verification
+
+- Rail Gun is selected with key 5: 10 damage (half normal), 12 shots per second (three times normal), and 1020 pixels of unobstructed range from a stationary ship (half normal).
+- Its 12-round magazine recharges in 3 seconds after depletion; switching weapons preserves the recharge timer.
+- All **54 automated checks passed**, including six Rail Gun checks and the existing simulated 30-minute soak.
+- C# compilation succeeded. NuGet emitted NU1900 warnings because its package vulnerability service was unavailable.
+
+## Version 0.3 changes and checks
+
+- Added a 1.2-second player death explosion followed by Game Over and Continue. Continue restarts the same arena and selected enemy count with fresh match state.
+- Added Death Laser: 3× normal damage, an 8-second reload that survives weapon switching, and an instantaneous beam to the first enemy or wall.
+- Added mines: 2× normal damage, at most four active, stationary round placement, 120-second lifetime, and one detonation on enemy contact. Movement sweeps detect contacts even when ships cross a mine between frames.
+- Halved default coasting drag from 24 to 12 pixels per second squared.
+- Added up to 15 green energy boosts in random reachable cells. Each heals 10% of maximum health, capped at full health. Missing pickups refill only at five-minute gameplay boundaries. Swept pickup detection handles fast movement. Full-health players leave pickups in place.
+- All **48 automated checks passed**, including the existing regression and simulated 30-minute soak. Results: `build/qa/tests-v03.txt`.
+- New checks cover laser range, wall occlusion, first-hit damage and reload; mine cap, non-stacking, expiry, damage, owner safety and high-speed triggers; random pickup placement, healing/capping, fast collection and refill boundaries; halved drag; death effects and reset state; invalid timing settings.
+- C# compilation completed with zero warnings and zero errors. Windows build: `build/Atomica-v03/Atomica.exe`. Earlier versions remain available; the launcher now uses version 0.3.
+- The build script's export-process variable was renamed to avoid collision with PowerShell's case-insensitive Export switch.
+- The corrected build/export script completed successfully. Release export logs are `build/qa/export-v03.log` and `build/qa/export-v03-errors.log`.
+- Inspected three controlled visual scenarios from the packaged executable at 1280 × 800: `arsenal-v03.png` (laser, round mine, green pickups, reload HUD), `explosion-v03.png` (player destruction), and `gameover-v03.png` (Game Over and Continue). These files are under `build/qa`. Fixtures run only when an explicit capture path and QA argument are supplied; ordinary play starts normally.
+- Continue's fresh simulation state is covered by the automated restart check. Full manual button interaction and combat balancing remain part of playtesting.
 
 ## Version 0.2 changes and checks
 
@@ -12,12 +34,12 @@ Version 0.2 verified November 26, 2026. Earlier version 0.1 observations are ide
 - C# build succeeded with zero warnings and zero errors. All **34 automated checks passed**; output is in `build/qa/tests-v02.txt`.
 - New checks cover all 15 enemy counts on both enlarged maps, unique placements, victory and restart counts, custom-map supplementation, insufficient custom-map space, drag at several simulation step sizes, exact stopping, active-thrust behavior and faster rotation.
 - The undamped inertia regression explicitly uses `CoastDrag = 0`; default gameplay now uses drag.
-- Windows release is in `build/Atomica-v02`. The prior build in `build/Atomica` is retained. The root launcher points to version 0.2.
+- Historical Windows release is in `build/Atomica-v02`. The prior build in `build/Atomica` is retained.
 - Export log: `build/qa/export-v02.log`. Menu and gameplay captures: `build/qa/menu-v02.png` and `build/qa/game-v02.png`.
 - Inspected both version 0.2 captures from the packaged executable: the enemy selector, new map dimensions, chosen-count HUD and full-map radar render correctly at 1280 × 800. Manual click-through of all selector values has not been performed; count logic is covered by the automated tests.
 - Godot's console wrapper remained running after the engine finished exporting. The wrapper was stopped after confirming the engine had exited; the produced executable then ran and captured both views successfully. Build.ps1 now invokes the engine directly to avoid that wrapper.
 
-## Build and package
+## Version 0.1 build and package
 
 - Godot 4.7.2 stable .NET, Compatibility renderer, C# targeting .NET 8.
 - Final debug compilation completed with zero warnings and zero errors.

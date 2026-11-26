@@ -1,2 +1,2 @@
 @echo off
-start "" "%~dp0build\Atomica-v02\Atomica.exe"
+start "" "%~dp0build\Atomica-v03\Atomica.exe"

@@ -54,6 +54,7 @@ public sealed class Arena
     public int Key(Vector2 p) => (int)(p.Y/Cell)*Width + (int)(p.X/Cell);
     public Vector2 Center(int key) => new((key%Width+.5f)*Cell, (key/Width+.5f)*Cell);
     public Vector2 Radar(Vector2 point, Vector2 origin, Vector2 size) => origin + point / Size * size;
+    public List<Vector2> ReachableCenters() => Reachable(PlayerStart).OrderBy(k=>k).Select(Center).ToList();
 
     public List<Vector2> SelectEnemySpawns(int count)
     {

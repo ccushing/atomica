@@ -10,6 +10,7 @@ public partial class Game : Node2D
     readonly Random random = new(42);
     readonly string[] mapNames={"KEPLER OUTPOST","THE FOUNDRY"};
     readonly string[] mapFiles={"kepler.csv","foundry.csv"};
+    readonly string[] weaponNames={"NORMAL","RICOCHET","DEATH LASER","MINE","RAIL GUN"};
     Arena arena=null!;
     Simulation sim=null!;
     Tuning tuning=new();
@@ -19,12 +20,13 @@ public partial class Game : Node2D
     Vector2 camera;
     bool menu=true, paused, help, legacy, mutedAudio;
     int selected, weapon, frame, enemyCount=6;
-    float clock, hitPulse;
+    float clock, hitPulse, deathDelay;
     string error="", customName="";
     FileDialog picker=null!;
     AudioStreamPlayer shotSound=null!, hitSound=null!;
     string? capture;
     bool demo;
+    bool captureFreeze;
     Vector2 Size=>GetViewportRect().Size;
     sealed class Particle { public Vector2 P,V; public float Life,Max; public Color Color; }
 
@@ -47,7 +49,39 @@ public partial class Game : Node2D
             if(arg=="--demo") demo=true;
         }
         if(demo) Start();
-        GetWindow().FocusExited+=()=> {if(!menu && sim.State==MatchState.Playing) paused=true;};
+        if(capture!=null)
+        {
+            string? scenario=OS.GetCmdlineUserArgs().FirstOrDefault(a=>a.StartsWith("--qa="));
+            if(scenario!=null)PrepareCapture(scenario[5..]);
+        }
+        GetWindow().FocusExited+=()=> {if(!captureFreeze && !menu && sim.State==MatchState.Playing) paused=true;};
+    }
+
+    // Repeatable visual checks run only when an explicit capture destination is provided.
+    void PrepareCapture(string scenario)
+    {
+        Start();captureFreeze=true;
+        if(scenario is "explosion" or "gameover")
+        {
+            sim.Player.Health=20;
+            sim.Bullets.Add(new(){Position=sim.Player.Position,Enemy=true,Owner=1,Damage=20});
+            sim.Step(1f/60,new());ShowEffects();deathDelay=scenario=="explosion"?1.2f:0;
+        }
+        else if(scenario=="arsenal")
+        {
+            sim.EnergyBoosts.Clear();sim.Player.Health=70;
+            sim.EnergyBoosts.Add(sim.Player.Position+new V(100,60));sim.EnergyBoosts.Add(sim.Player.Position+new V(-140,-70));
+            sim.Mines.Add(new(){Position=sim.Player.Position+new V(-70,60)});
+            sim.Enemies[0].Position=sim.Player.Position+new V(0,-220);
+            weapon=2;sim.Step(1f/60,new(0,0,true,2));ShowEffects();
+        }
+        else if(scenario is "rail" or "rail-reload")
+        {
+            weapon=4;
+            int ticks=scenario=="rail"?24:56;
+            for(int i=0;i<ticks;i++)sim.Step(1f/60,new(0,0,true,4));
+            ShowEffects();
+        }
     }
 
     string ReadData(string file)
@@ -75,7 +109,7 @@ public partial class Game : Node2D
         }
         catch(Exception e) {error="Map not loaded: "+e.Message;menu=true;}
     }
-    void Reset() {sim=new Simulation(arena,tuning);camera=G(sim.Player.Position);weapon=0;particles.Clear();paused=false;help=false;hitPulse=0;}
+    void Reset() {sim=new Simulation(arena,tuning);camera=G(sim.Player.Position);weapon=0;particles.Clear();paused=false;help=false;hitPulse=0;deathDelay=0;}
     void Start()
     {
         try { var next=new Simulation(arena,tuning,enemyCount);Reset();sim=next;menu=false;error=""; }
@@ -90,29 +124,36 @@ public partial class Game : Node2D
     }
     public override void _PhysicsProcess(double delta)
     {
-        if(sim==null || menu || paused || help || sim.State!=MatchState.Playing) return;
+        if(sim==null || menu || paused || help || captureFreeze || sim.State!=MatchState.Playing) return;
         float turn=(Input.IsPhysicalKeyPressed(Key.Right)?1:0)-(Input.IsPhysicalKeyPressed(Key.Left)?1:0);
         float thrust=(Input.IsPhysicalKeyPressed(Key.Up)?1:0)-(Input.IsPhysicalKeyPressed(Key.Down)?1:0);
         int health=sim.Player.Health;
         sim.Step((float)delta,new Command(turn,thrust,Input.IsPhysicalKeyPressed(Key.Space),weapon));
         if(sim.Player.Health<health) hitPulse=.25f;
+        if(sim.State==MatchState.Defeat)deathDelay=1.2f;
+        ShowEffects();
+    }
+    void ShowEffects()
+    {
         foreach(var effect in sim.Effects)
         {
-            if(effect.Kind=="shot") {if(!effect.Enemy && !mutedAudio)shotSound.Play();continue;}
-            int count=effect.Kind=="destroy"?35:7;
-            Color c=effect.Enemy?red:mint;
+            if(effect.Kind is "shot" or "laser" or "rail") {if(!effect.Enemy && !mutedAudio){shotSound.PitchScale=effect.Kind=="laser"?.45f:effect.Kind=="rail"?1.7f:1;shotSound.Play();}continue;}
+            bool explosion=effect.Kind is "destroy" or "mine";
+            int count=explosion?90:7;
+            Color c=effect.Kind=="energy"?new Color("65ff84"):explosion?amber:effect.Enemy?red:mint;
             for(int i=0;i<count;i++)
             {
                 float a=(float)random.NextDouble()*MathF.Tau;
-                float speed=30+(float)random.NextDouble()*180;
-                particles.Add(new(){P=G(effect.Position),V=new Vector2(MathF.Cos(a),MathF.Sin(a))*speed,Life=effect.Kind=="destroy"?.8f:.3f,Max=effect.Kind=="destroy"?.8f:.3f,Color=c});
+                float speed=30+(float)random.NextDouble()*(explosion?320:180);
+                particles.Add(new(){P=G(effect.Position),V=new Vector2(MathF.Cos(a),MathF.Sin(a))*speed,Life=explosion?1.2f:.3f,Max=explosion?1.2f:.3f,Color=c});
             }
-            if(!mutedAudio && effect.Kind is "hit" or "destroy") hitSound.Play();
+            if(!mutedAudio && effect.Kind is "hit" or "destroy" or "mine") hitSound.Play();
         }
     }
     public override void _Process(double delta)
     {
         clock+=(float)delta;frame++;hitPulse=Math.Max(0,hitPulse-(float)delta);
+        deathDelay=Math.Max(0,deathDelay-(float)delta);
         if(!paused && !help)
         {
             foreach(var p in particles){p.Life-=(float)delta;p.P+=p.V*(float)delta;}
@@ -136,6 +177,7 @@ public partial class Game : Node2D
             foreach(var b in buttons.ToArray())if(b.Bounds.HasPoint(mouse.Position)){b.Action();break;}
         }
         if(ev is not InputEventKey key || !key.Pressed || key.Echo) return;
+        if(!menu && sim.State==MatchState.Defeat && deathDelay>0)return;
         if(help && key.PhysicalKeycode is not (Key.F1 or Key.Escape or Key.F11 or Key.M)) return;
         switch(key.PhysicalKeycode)
         {
@@ -150,6 +192,9 @@ public partial class Game : Node2D
                 break;
             case Key.Key1:if(menu){LoadBuiltIn(0);error="";}else weapon=0;break;
             case Key.Key2:if(menu){LoadBuiltIn(1);error="";}else weapon=1;break;
+            case Key.Key3:if(!menu)weapon=2;break;
+            case Key.Key4:if(!menu)weapon=3;break;
+            case Key.Key5:if(!menu)weapon=4;break;
             case Key.Enter:if(menu)Start();else if(paused)paused=false;else if(sim.State!=MatchState.Playing)Start();break;
             case Key.R:if(!menu && (paused || sim.State!=MatchState.Playing))Start();break;
         }
@@ -161,7 +206,7 @@ public partial class Game : Node2D
         if(sim==null)return;
         DrawWorld();
         if(menu)DrawMenu();else DrawHud();
-        if(!menu && (paused || sim.State!=MatchState.Playing))DrawOverlay();
+        if(!menu && (paused || sim.State!=MatchState.Playing && deathDelay<=0))DrawOverlay();
         if(help)DrawHelp();
     }
 
@@ -206,15 +251,43 @@ public partial class Game : Node2D
             if(!arena.IsWall(x-1,y))DrawLine(p,p+new Vector2(0,32),new Color("365768"),2);
             if((x+y)%5==0)DrawRect(new Rect2(p+new Vector2(12,12),new(8,3)),new Color("567382"));
         }
+        foreach(var boost in sim.EnergyBoosts)
+        {
+            Vector2 p=World(G(boost));Color green=new("65ff84");
+            DrawCircle(p,15+MathF.Sin(clock*3)*2,new Color(green,.09f));
+            DrawArc(p,10,0,MathF.Tau,24,green,1.5f,true);
+            DrawLine(p+new Vector2(-5,0),p+new Vector2(5,0),green,3,true);
+            DrawLine(p+new Vector2(0,-5),p+new Vector2(0,5),green,3,true);
+        }
+        foreach(var mine in sim.Mines)
+        {
+            Vector2 p=World(G(mine.Position));DrawCircle(p,10,new Color("333442"));
+            DrawArc(p,10,0,MathF.Tau,24,amber,2,true);
+            DrawCircle(p,3,new Color(amber,.6f+.4f*MathF.Sin(clock*5)));
+            DrawArc(p,14,-MathF.PI/2,-MathF.PI/2+MathF.Tau*(1-mine.Age/tuning.MineLifetime),32,new Color(amber,.45f),1,true);
+        }
+        foreach(var beam in sim.Lasers)
+        {
+            Vector2 start=World(G(beam.Start)),end=World(G(beam.End));float alpha=Math.Clamp(beam.Life/.3f,0,1);
+            DrawLine(start,end,new Color(1,.2f,.6f,alpha*.16f),20,true);
+            DrawLine(start,end,new Color(1,.3f,.65f,alpha),7,true);
+            DrawLine(start,end,new Color(1,.92f,.98f,alpha),2,true);
+        }
         foreach(var b in sim.Bullets)
         {
-            Vector2 p=World(G(b.Position));Color c=b.Enemy?red:b.Bouncing?amber:mint;
+            Vector2 p=World(G(b.Position));Color c=b.Enemy?red:b.Rail?new Color("75c8ff"):b.Bouncing?amber:mint;
             Vector2 dir=G(b.Velocity).Normalized();
-            DrawLine(p-dir*12,p,c,3,true);DrawCircle(p,2,Colors.White);
+            DrawLine(p-dir*(b.Rail?22:12),p,c,b.Rail?2:3,true);DrawCircle(p,b.Rail?1.5f:2,Colors.White);
         }
         foreach(var enemy in sim.Enemies)if(enemy.Health>0)DrawShip(enemy);
         if(sim.Player.Health>0)DrawShip(sim.Player);
         foreach(var part in particles)DrawCircle(World(part.P),2,new Color(part.Color,part.Life/part.Max));
+        if(deathDelay>0)
+        {
+            Vector2 p=World(G(sim.Player.Position));float age=1.2f-deathDelay;
+            DrawCircle(p,Math.Max(1,30-age*40),new Color(1,.9f,.55f,Math.Max(0,1-age*3)));
+            DrawArc(p,12+age*190,0,MathF.Tau,80,new Color(amber,deathDelay/1.2f),3,true);
+        }
         if(hitPulse>0)DrawRect(new Rect2(Vector2.Zero,Size),new Color(1,.2f,.25f,hitPulse*.22f));
     }
     void DrawShip(Ship ship)
@@ -279,9 +352,9 @@ public partial class Game : Node2D
         if(customName!="")Text("CUSTOM ARENA  /  "+customName,new(x,actionY+85),16,mint);
         if(error!="")Wrapped(error,new(x,actionY+90),Size.X-2*x,16,red);
         float foot=Size.Y-75;
-        Small("ARROWS  Rotate & thrust     SPACE  Fire     1 / 2  Weapons",x,foot);
+        Small("ARROWS  Rotate & thrust     SPACE  Fire / plant     1–5  Weapons",x,foot);
         Small("F11  Fullscreen     M  Sound "+(mutedAudio?"off":"on")+"     V  "+(legacy?"Original ship art":"Vector ship art"),x,foot+25);
-        Small("PROTOTYPE  0.2",Size.X-190,foot+25);
+        Small("PROTOTYPE  0.4",Size.X-190,foot+25);
     }
     void DrawHud()
     {
@@ -291,8 +364,9 @@ public partial class Game : Node2D
         Box(new Rect2(Size.X/2-140,22,280,66),new Color(bg,.94f));
         Text($"{sim.Kills:00} / {sim.EnemyCount:00}  ELIMINATED",new(Size.X/2-117,49),19,mint);
         Small(TimeSpan.FromSeconds(sim.Elapsed).ToString(@"mm\:ss")+"  ELAPSED",Size.X/2-117,72);
-        Button("II  PAUSE",new(Size.X-148,22,126,44),()=>paused=true);
+        if(sim.State==MatchState.Playing)Button("II  PAUSE",new(Size.X-148,22,126,44),()=>paused=true);
         float bottom=Size.Y-106;
+        DrawWeaponSelector(new Rect2(22,bottom-74,Size.X-328,62));
         Box(new Rect2(22,bottom,284,84),new Color(bg,.95f));
         Small("HULL INTEGRITY",40,bottom+25);
         Text((100*sim.Player.Health/tuning.Health)+"%",new(242,bottom+26),18,sim.Player.Health<35?red:mint);
@@ -300,11 +374,33 @@ public partial class Game : Node2D
         DrawRect(new Rect2(40,bottom+40,246f*sim.Player.Health/tuning.Health,7),sim.Player.Health<35?red:mint);
         Small($"VELOCITY  {sim.Player.Velocity.Length():0000} px/s",40,bottom+69);
         Box(new Rect2(322,bottom,308,84),new Color(bg,.95f));
-        Small("ACTIVE WEAPON  /  "+(weapon==0?"01":"02"),340,bottom+25);
-        Text(weapon==0?"NORMAL":"RICOCHET",new(340,bottom+52),23,weapon==0?mint:amber);
-        Small(weapon==0?$"{tuning.NormalDamage} DAMAGE  /  DIRECT FIRE":$"{tuning.BouncingDamage} DAMAGE  /  {tuning.MaxBounces} BOUNCES",340,bottom+72);
-        Small("1 / 2  SWITCH     F1  HELP",650,Size.Y-41);
+        Small("ACTIVE WEAPON  /  "+(weapon+1).ToString("00"),340,bottom+25);
+        Text(weaponNames[weapon],new(340,bottom+52),23,weapon==4?new Color("75c8ff"):weapon==2?new Color("ff66b0"):weapon==0?mint:amber);
+        string detail=weapon switch {
+            0=>$"{tuning.NormalDamage} DAMAGE  /  DIRECT FIRE",
+            1=>$"{tuning.BouncingDamage} DAMAGE  /  {tuning.MaxBounces} BOUNCES",
+            2=>$"{tuning.NormalDamage*3} DAMAGE  /  "+(sim.LaserCooldown>0?$"RELOAD {sim.LaserCooldown:0.0}s":"READY"),
+            3=>$"{tuning.NormalDamage*2} DAMAGE  /  {sim.Mines.Count}/4 PLANTED",
+            _=>sim.RailCooldown>0?$"RECHARGING  {sim.RailCooldown:0.0}s":$"{sim.RailAmmo}/{tuning.RailMagazineSize} ROUNDS  /  {tuning.ShotsPerSecond*3:0.#} PER SEC" };
+        Small(detail,340,bottom+72);
+        Small("1–5  SWITCH     SPACE  FIRE / PLANT",650,Size.Y-67);
+        Small($"ENERGY  {sim.EnergyBoosts.Count}/15  ·  REFILL {TimeSpan.FromSeconds(Math.Ceiling(sim.EnergyRefillIn)).ToString(@"mm\:ss")}",650,Size.Y-41);
         DrawRadar(new Rect2(Size.X-284,Size.Y-238,262,216));
+    }
+    void DrawWeaponSelector(Rect2 bounds)
+    {
+        const float gap=8;
+        float width=(bounds.Size.X-gap*(weaponNames.Length-1))/weaponNames.Length;
+        for(int i=0;i<weaponNames.Length;i++)
+        {
+            bool active=i==weapon;
+            var r=new Rect2(bounds.Position+new Vector2(i*(width+gap),0),new Vector2(width,bounds.Size.Y));
+            Box(r,active?new Color("193c40"):new Color(bg,.95f));
+            DrawRect(r,active?mint:line,false,active?2:1);
+            Text((i+1).ToString(),r.Position+new Vector2(12,27),20,active?mint:ink);
+            Text(weaponNames[i],r.Position+new Vector2(36,26),15,active?ink:muted);
+            Text(active?"SELECTED":"PRESS "+(i+1),r.Position+new Vector2(36,47),12,active?mint:muted);
+        }
     }
     void DrawRadar(Rect2 r)
     {
@@ -316,21 +412,24 @@ public partial class Game : Node2D
         var vOrigin=G(arena.Radar(new V(camera.X-Size.X/2,camera.Y-Size.Y/2),new V(origin.X,origin.Y),new V(dims.X,dims.Y)));
         Vector2 vSize=Size/G(arena.Size)*dims;
         DrawRect(new Rect2(vOrigin,vSize).Intersection(new Rect2(origin,dims)),new Color(mint,.22f),false);
+        foreach(var boost in sim.EnergyBoosts)DrawCircle(G(arena.Radar(boost,new(origin.X,origin.Y),new(dims.X,dims.Y))),1.8f,new Color("65ff84"));
+        foreach(var mine in sim.Mines)DrawCircle(G(arena.Radar(mine.Position,new(origin.X,origin.Y),new(dims.X,dims.Y))),2,amber);
         foreach(var enemy in sim.Enemies)if(enemy.Health>0)DrawCircle(G(arena.Radar(enemy.Position,new(origin.X,origin.Y),new(dims.X,dims.Y))),2.7f,red);
         Vector2 p=G(arena.Radar(sim.Player.Position,new(origin.X,origin.Y),new(dims.X,dims.Y)));
         DrawCircle(p,4,mint);DrawArc(p,7,0,MathF.Tau,18,new Color(mint,.45f));
     }
     void DrawOverlay()
     {
+        buttons.Clear();
         DrawRect(new Rect2(Vector2.Zero,Size),new Color(bg,.8f));
         var r=new Rect2(Size/2-new Vector2(270,205),new Vector2(540,410));Box(r,panel);
-        string title=paused?"FLIGHT PAUSED":sim.State==MatchState.Victory?"SECTOR SECURED":"SIGNAL LOST";
+        string title=paused?"FLIGHT PAUSED":sim.State==MatchState.Victory?"SECTOR SECURED":"GAME OVER";
         Color c=sim.State==MatchState.Defeat?red:mint;
         Small("ATOMICA  /  MISSION CONTROL",r.Position.X+36,r.Position.Y+42);
         Text(title,r.Position+new Vector2(36,99),34,c);
-        Text(paused?"Take a breath. Your ship will wait.":sim.State==MatchState.Victory?"All hostiles eliminated. Excellent flying.":"Your hull failed. Regroup and launch again.",r.Position+new Vector2(36,138),17,ink);
+        Text(paused?"Take a breath. Your ship will wait.":sim.State==MatchState.Victory?"All hostiles eliminated. Excellent flying.":"Continue to restart this arena with a fresh ship.",r.Position+new Vector2(36,138),17,ink);
         Small(sim.Kills+" ELIMINATED   /   "+TimeSpan.FromSeconds(sim.Elapsed).ToString(@"mm\:ss")+" ELAPSED",r.Position.X+36,r.Position.Y+171);
-        Button(paused?"RESUME  /  ENTER":"LAUNCH AGAIN  /  ENTER",new(r.Position+new Vector2(36,204),new Vector2(468,50)),()=>{if(paused)paused=false;else Start();},true);
+        Button(paused?"RESUME  /  ENTER":sim.State==MatchState.Defeat?"CONTINUE  /  ENTER":"LAUNCH AGAIN  /  ENTER",new(r.Position+new Vector2(36,204),new Vector2(468,50)),()=>{if(paused)paused=false;else Start();},true);
         Button("RESTART",new(r.Position+new Vector2(36,271),new Vector2(224,46)),Start);
         Button("ARENA SELECT",new(r.Position+new Vector2(280,271),new Vector2(224,46)),()=>{menu=true;paused=false;});
         Small("F1  Flight manual     M  "+(mutedAudio?"Sound off":"Sound on"),r.Position.X+36,r.Position.Y+366);
@@ -340,10 +439,10 @@ public partial class Game : Node2D
         buttons.Clear();DrawRect(new Rect2(Vector2.Zero,Size),new Color(bg,.96f));
         Vector2 p=Size/2-new Vector2(350,300);
         Small("PILOT BRIEFING",p.X,p.Y);Text("THE FLIGHT MANUAL",p+new Vector2(0,51),36,ink);
-        string[] rows={"LEFT / RIGHT       Rotate the ship","UP / DOWN          Forward / reverse thrust","SPACE              Fire  ·  Hold for continuous fire","1 / 2              Normal / ricochet weapon","ESC                Pause / resume","F11                Fullscreen","M / V              Toggle sound / original ship art"};
+        string[] rows={"LEFT / RIGHT       Rotate the ship","UP / DOWN          Forward / reverse thrust","SPACE              Fire weapon / plant a mine","1 / 2              Normal / ricochet rounds","3 / 4 / 5          Death Laser / mines / Rail Gun","ESC / F11          Pause / fullscreen","M / V              Toggle sound / original ship art"};
         for(int i=0;i<rows.Length;i++)Text(rows[i],p+new Vector2(0,104+i*36),19,i%2==0?ink:muted);
         Wrapped("Release thrust to coast gently to a stop. Turn to face your direction of travel and use reverse thrust to brake faster. Walls bounce you safely; enemy bullets do not.",p+new Vector2(0,386),700,19,mint);
-        Wrapped("Clear every red contact to win. Ricochet rounds deal half damage from launch and bounce up to three times. The radar always shows every living hostile.",p+new Vector2(0,472),700,17,muted);
+        Wrapped("Rail Gun: half damage and range, 3× fire rate; 12 rounds, then 3s recharge. Laser: 3× damage, 8s reload. Mines: 2× damage, four active, 2min lifetime. Green boosts: +10% hull; refill every 5min.",p+new Vector2(0,472),700,17,muted);
         Button("READY TO FLY  /  ESC",new(p+new Vector2(0,545),new Vector2(300,50)),()=>help=false,true);
     }
     void Wrapped(string text,Vector2 p,float width,int size,Color color)
