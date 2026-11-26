@@ -1,0 +1,7 @@
+.tools/
+.proposal-work/
+**/.godot/
+**/bin/
+**/obj/
+build/
+*.user

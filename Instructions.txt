@@ -1,0 +1,27 @@
+
+I want to make a 2d shooter in the style of SubSpace (also known as Continuum). I had created a working version years ago in Microsoft's XNA framework, but that is no longer supported. Here are the feautures of the game:
+
+1. 2D shooter where the user flies around in a spaceship in a large, 2D map.
+2. The map can be loaded via a .csv file which defines start points and walls.
+3. Controls are : 
+	Left Arrow = Rotate Left
+	Right Arrow = Rotate Right
+	Up Arrow = Forward Thrust
+	Down Arrow = Reverse Thrust
+	Space Bar = Fire
+4. The ship should follow realistic physics of a ship flying in space.
+5. The ship bounces off walls without damage.
+6. There is a radar box in the lower right corner that shows the map, player position and enemy positions
+7. Different Weapons
+	Normal - Bullets fire from ship and do not bounce with full damage.
+	Bouncing - Bullet bounce off of walls, but with 1/2 damage.
+	
+Here is the path to the original. There are image files in there that can be re-used.
+E:\Backup\2015\Projects\XNA\CaptureWindows
+
+PLease save all artifacts to 
+D:\Documents\2026\Projects\Atomica
+
+
+
+

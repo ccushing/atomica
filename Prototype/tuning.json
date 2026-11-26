@@ -1,0 +1,15 @@
+{
+  "Acceleration": 260,
+  "TurnRate": 5.1,
+  "CoastDrag": 24,
+  "Health": 100,
+  "NormalDamage": 20,
+  "BouncingDamage": 10,
+  "ShotsPerSecond": 4,
+  "MuzzleSpeed": 680,
+  "ProjectileLifetime": 3,
+  "MaxBounces": 3,
+  "EnemySpeed": 105,
+  "EnemyFireInterval": 1.1,
+  "SpeedCap": 0
+}
