@@ -6,7 +6,7 @@ A single-player Windows space shooter built in **Godot 4.7.2 .NET / C#**, based 
 
 Double-click **Play Atomica.cmd** in this folder, or run **build/Atomica-v03/Atomica.exe**. Keep the executable, PCK file and `data_Atomica_windows_x86_64` folder together. The release includes the .NET runtime; Godot and the SDK are not needed to play. Earlier builds remain in `build/Atomica` and `build/Atomica-v02`.
 
-Select Kepler Outpost (216 × 162 cells, open space) or The Foundry (288 × 216 cells, corridors). Both maps now have nine times their original area. Use the **− / +** controls to choose **1–15 enemy ships** (default 6), then click **Launch** or press **Enter**. The count carries across map selections and restarts during the session. Destroy all selected enemies to win. Losing all hull integrity ends the run. Restart from the result screen or pause menu.
+Select Kepler Outpost (216 × 162 cells, open space), The Foundry (288 × 216 cells, industrial corridors), or **The Labyrinth** (288 × 216 cells, narrow winding corridors and four small chambers). Use **1 / 2 / 3** in the menu or click an arena card. The Labyrinth matches The Foundry's size, with three-cell-wide corridors, alternate routes, and 15 authored enemy starts. Use the **− / +** controls to choose **1–15 enemy ships** (default 6), then click **Launch** or press **Enter**. The count carries across map selections and restarts during the session. Destroy all selected enemies to win. Losing all hull integrity ends the run. Restart from the result screen or pause menu.
 
 | Key | Action |
 | --- | --- |
@@ -15,10 +15,12 @@ Select Kepler Outpost (216 × 162 cells, open space) or The Foundry (288 × 216 
 | Space | Fire selected weapon / plant mine |
 | 1 / 2 | Normal / ricochet rounds |
 | 3 / 4 | Death Laser / mine |
+| 5 / 6 | Rail Gun / Tactical Bomb |
 | Escape | Pause or resume |
 | R | Restart while paused or after a result |
 | F1 | Flight manual |
 | F11 | Toggle fullscreen |
+| T | Toggle radar targeting line |
 | M | Toggle sound |
 | V | Toggle the original XNA ship images |
 
@@ -26,14 +28,19 @@ The ship gently decelerates when thrust is released and reaches a complete stop.
 
 ## Weapons and survival
 
+Press **T** to toggle the radar targeting marker (off by default). A straight line extends from the ship's nose in its current facing direction to the radar map's edge and rotates with the ship. The radar header shows whether aiming is on or off. The setting persists across restarts during the session.
+
 | Weapon | Damage | Behavior |
 | --- | --- | --- |
 | Normal | 20 | Four shots/second, destroyed by walls; 3-second lifetime |
 | Ricochet | 10 | Half damage from launch, three bounces, removed on fourth wall contact; 3-second lifetime |
 | Death Laser | 60 | Instant beam stops at the first enemy or wall; 8-second reload |
 | Mine | 40 | Round stationary mine, triggers once when an enemy crosses it; 120-second lifetime |
+| Tactical Bomb | 80 | Slow projectile; one active, impact detonation, 160-pixel blast radius; 60-second recharge |
 
 Laser and mine damage remain 3× and 2× the configured normal damage. Laser range spans the entire arena until a wall or enemy blocks it; the visible beam lasts 0.3 seconds. Switching weapons does not reset the laser's reload timer. Other weapons can be used during that reload.
+
+Select **6** and press Space to launch a **Tactical Bomb**. It travels in the ship's facing direction at 68 pixels/second (one-tenth normal bullet speed), independent of ship velocity. Contact with an enemy or wall detonates it, dealing 4× configured normal damage once to each enemy whose center is within five nominal 32-pixel ship lengths (160 pixels). Walls shield enemies; the player is immune. Recharge begins at launch and lasts 60 seconds, even across weapon switches. Only one bomb can be active, including after recharge completes; it remains in flight until impact. The HUD shows active/recharge status, and the radar marks its position. `BombReload` and `BombSpeed` can be adjusted in tuning.json.
 
 Select **4**, then press Space to plant a mine at the ship's current position. Up to four can be active. Holding Space plants as you move with a half-second placement delay; mines cannot be stacked in the same spot. Exploding or expiring mines free slots. Mines do not hurt the player. The HUD shows active mine count; amber radar dots mark mines.
 

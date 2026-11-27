@@ -2,6 +2,26 @@
 
 Version 0.3 verified November 26, 2026. Earlier observations are identified below.
 
+## Radar targeting marker
+
+- T toggles a straight heading line from the player ship's nose to the radar map boundary. It defaults off, follows rotation, and persists across match restarts within the session.
+- Build and Windows export succeeded with zero warnings or errors. Inspected `build/qa/radar-aim.png` and `build/qa/radar-aim-off.png`, captured after one and two T key events respectively; the line and header state toggle correctly.
+
+## Tactical Bomb
+
+- Added key 6: 4× normal damage, one active projectile, 68 pixels/second world speed, 160-pixel blast radius (five nominal ship lengths), and a 60-second recharge from launch.
+- Detonates on enemy or wall contact; walls shield enemies, and the player is immune. An active bomb blocks further launches even after recharge. Switching weapons preserves recharge; restarting clears bomb state.
+- All **62 automated checks passed**, including seven bomb checks covering area damage/boundaries, shielding, slow launch, cooldown, active limit, reset, fast enemy crossings, and tuning validation.
+- Inspected `build/qa/bomb.png` and `build/qa/bomb-blast.png`: all six weapon options fit, active/recharge status renders, and the blast radius is visible. Capture logs contain no errors.
+- Build and Windows export succeeded. NuGet reported NU1900 warnings because its vulnerability-data service was unavailable. Manual bomb combat balancing remains untested.
+
+## The Labyrinth
+
+- Added a third built-in arena at 288 × 216 cells, matching The Foundry, with three-cell-wide corridors, connecting loops, four small chambers, and 15 authored enemy starts.
+- All **55 automated checks passed**. Bundled-map path checks and every enemy-count option now include The Labyrinth; a dedicated check verifies every floor cell is reachable.
+- Build and release export succeeded with zero build warnings or errors. Inspected `build/qa/labyrinth-map.png` and `build/qa/labyrinth-menu.png`; all three arena cards fit at 1280 × 800.
+- Select the map by its menu card or key 3. Manual combat balancing on this map remains untested.
+
 ## Rail Gun verification
 
 - Rail Gun is selected with key 5: 10 damage (half normal), 12 shots per second (three times normal), and 1020 pixels of unobstructed range from a stationary ship (half normal).

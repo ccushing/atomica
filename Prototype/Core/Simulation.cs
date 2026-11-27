@@ -10,6 +10,8 @@ public sealed class Tuning
     public float CoastDrag {get;set;}=12;
     public float LaserReload {get;set;}=8;
     public float RailReload {get;set;}=3;
+    public float BombReload {get;set;}=60;
+    public float BombSpeed {get;set;}=68;
     public int RailMagazineSize {get;set;}=12;
     public float MineLifetime {get;set;}=120;
     public float EnergyRefillSeconds {get;set;}=300;
@@ -28,7 +30,7 @@ public sealed class Tuning
         var t=JsonSerializer.Deserialize<Tuning>(json) ?? throw new FormatException("Empty tuning file.");
         if(!float.IsFinite(t.CoastDrag) || t.CoastDrag<0) throw new FormatException("CoastDrag must be finite and nonnegative.");
         if(!float.IsFinite(t.RailReload) || t.RailReload<=0 || t.RailMagazineSize<1 || t.RailMagazineSize>256) throw new FormatException("RailReload must be positive and finite; RailMagazineSize must be 1 to 256.");
-        if(new[]{t.LaserReload,t.MineLifetime,t.EnergyRefillSeconds}.Any(v=>!float.IsFinite(v) || v<=0)) throw new FormatException("Laser reload, mine lifetime and energy refill interval must be positive and finite.");
+        if(new[]{t.LaserReload,t.BombReload,t.BombSpeed,t.MineLifetime,t.EnergyRefillSeconds}.Any(v=>!float.IsFinite(v) || v<=0)) throw new FormatException("Weapon reloads, bomb speed, mine lifetime and energy refill interval must be positive and finite.");
         if(new[]{t.Acceleration,t.TurnRate,t.ShotsPerSecond,t.MuzzleSpeed,t.ProjectileLifetime,t.EnemySpeed,t.EnemyFireInterval,t.SpeedCap}.Any(v=>!float.IsFinite(v)) || t.Acceleration<=0 || t.TurnRate<=0 || t.Health<=0 || t.NormalDamage<=0 || t.BouncingDamage<=0 || t.ShotsPerSecond<=0 || t.MuzzleSpeed<=0 || t.ProjectileLifetime<=0 || t.MaxBounces<0 || t.EnemySpeed<=0 || t.EnemyFireInterval<=0 || t.SpeedCap<0)
             throw new FormatException("Tuning values must be positive; SpeedCap and MaxBounces may be zero.");
         return t;
@@ -57,6 +59,8 @@ public sealed class Bullet
 }
 public readonly record struct Effect(Vector2 Position,string Kind,bool Enemy);
 public sealed class Mine { public Vector2 Position; public float Age; }
+public sealed class TacticalBomb { public Vector2 Position,Velocity; }
+public sealed class BombBlast { public Vector2 Position; public float Life=.6f; }
 public sealed class LaserBeam { public Vector2 Start,End; public float Life=.3f; }
 
 public sealed class Simulation
@@ -68,6 +72,12 @@ public sealed class Simulation
     public List<Bullet> Bullets {get;}=new();
     public List<Effect> Effects {get;}=new();
     public List<Mine> Mines {get;}=new();
+    public TacticalBomb? Bomb {get;private set;}
+    public List<BombBlast> BombBlasts {get;}=new();
+    // Nominal ship length is one 32-pixel map cell.
+    public const float BombRadius=5*Arena.Cell;
+    public float BombCooldown {get;private set;}
+    double bombReadyAt;
     public List<LaserBeam> Lasers {get;}=new();
     public List<Vector2> EnergyBoosts {get;}=new();
     public const int MaxMines=4, MaxEnergyBoosts=15;
@@ -76,7 +86,7 @@ public sealed class Simulation
     public float RailCooldown {get;private set;}
     public float RailShotCooldown {get;private set;}
     public int RailAmmo {get;private set;}
-    public float WeaponReadyIn => Weapon==2?LaserCooldown:Weapon==3?MineCooldown:Weapon==4?Math.Max(RailCooldown,RailShotCooldown):Player.Cooldown;
+    public float WeaponReadyIn => Weapon==2?LaserCooldown:Weapon==3?MineCooldown:Weapon==4?Math.Max(RailCooldown,RailShotCooldown):Weapon==5?BombCooldown:Player.Cooldown;
     public float EnergyRefillIn => (float)Math.Max(0,nextEnergyRefill-gameplayTime);
     readonly Random random;
     readonly List<Vector2> pickupCells;
@@ -104,6 +114,10 @@ public sealed class Simulation
         if(State!=MatchState.Playing) return;
         Elapsed+=dt;
         gameplayTime+=dt;
+        BombCooldown=(float)Math.Max(0,bombReadyAt-gameplayTime);
+        if(BombCooldown<.000001f)BombCooldown=0;
+        foreach(var blast in BombBlasts)blast.Life-=dt;
+        BombBlasts.RemoveAll(b=>b.Life<=0);
         foreach(var beam in Lasers)beam.Life-=dt;
         Lasers.RemoveAll(b=>b.Life<=0);
         foreach(var mine in Mines)mine.Age+=dt;
@@ -115,7 +129,7 @@ public sealed class Simulation
             RailCooldown=(float)Math.Max(0,railRechargeAt-gameplayTime);
             if(RailCooldown<=.000001f){RailCooldown=0;RailAmmo=Settings.RailMagazineSize;}
         }
-        Weapon=Math.Clamp(command.Weapon,0,4);
+        Weapon=Math.Clamp(command.Weapon,0,5);
         Player.Cooldown=Math.Max(0,Player.Cooldown-dt); Player.Flash=Math.Max(0,Player.Flash-dt);
         Player.Angle+=Math.Clamp(command.Turn,-1,1)*Settings.TurnRate*dt;
         Player.Velocity+=Player.Forward*Math.Clamp(command.Thrust,-1,1)*Settings.Acceleration*dt;
@@ -132,13 +146,16 @@ public sealed class Simulation
             else if(Weapon==2 && LaserCooldown<=0) FireLaser();
             else if(Weapon==3 && MineCooldown<=0) LayMine();
             else if(Weapon==4 && RailCooldown<=0 && RailShotCooldown<=.000001f) FireRail();
+            else if(Weapon==5 && BombCooldown<=0 && Bomb==null) FireBomb();
         }
+        var enemyStarts=Bomb!=null?Enemies.ToDictionary(e=>e.Id,e=>e.Position):null;
         foreach(var enemy in Enemies)
         {
             if(enemy.Health<=0) continue;
             enemy.Cooldown=Math.Max(0,enemy.Cooldown-dt); enemy.Flash=Math.Max(0,enemy.Flash-dt);
             EnemyStep(enemy,dt);
         }
+        if(Bomb!=null)StepBomb(dt,enemyStarts!);
         foreach(var bullet in Bullets)
         {
             float lifetime=bullet.Lifetime>0?bullet.Lifetime:Settings.ProjectileLifetime;
@@ -192,6 +209,35 @@ public sealed class Simulation
         Bullets.Add(new(){Position=Player.Position+Player.Forward*9,Velocity=Player.Velocity+Player.Forward*Settings.MuzzleSpeed,Owner=Player.Id,Damage=Math.Max(1,(int)MathF.Round(Settings.NormalDamage*.5f)),Rail=true,Lifetime=Settings.ProjectileLifetime*.5f});
         Effects.Add(new(Player.Position+Player.Forward*16,"rail",false));
         if(RailAmmo==0){RailCooldown=Settings.RailReload;railRechargeAt=gameplayTime+Settings.RailReload;}
+    }
+
+    void FireBomb()
+    {
+        // Fixed world speed keeps the bomb slow even when launched at high ship speed.
+        Bomb=new(){Position=Player.Position+Player.Forward*8,Velocity=Player.Forward*Settings.BombSpeed};
+        BombCooldown=Settings.BombReload;bombReadyAt=gameplayTime+Settings.BombReload;
+        Effects.Add(new(Bomb.Position,"bomb-launch",false));
+    }
+
+    void StepBomb(float dt,Dictionary<int,Vector2> starts)
+    {
+        var bomb=Bomb!;Vector2 delta=bomb.Velocity*dt;
+        float nearest=Collision.Wall(Map,bomb.Position,delta,4)?.Time??2;
+        foreach(var enemy in Enemies)
+        {
+            if(enemy.Health<=0)continue;
+            // Relative sweep catches enemies crossing the slow projectile between frames.
+            if(Collision.Circle(bomb.Position,delta-(enemy.Position-starts[enemy.Id]),starts[enemy.Id],16) is { } t && t<nearest)nearest=t;
+        }
+        if(nearest>1){bomb.Position+=delta;return;}
+        bomb.Position+=delta*nearest;Bomb=null;
+        BombBlasts.Add(new(){Position=bomb.Position});Effects.Add(new(bomb.Position,"bomb",false));
+        foreach(var enemy in Enemies)
+        {
+            Vector2 atImpact=Vector2.Lerp(starts[enemy.Id],enemy.Position,nearest);
+            if(enemy.Health>0 && Vector2.DistanceSquared(bomb.Position,atImpact)<=BombRadius*BombRadius && Collision.Wall(Map,bomb.Position,atImpact-bomb.Position,0)==null)
+                Damage(enemy,Settings.NormalDamage*4);
+        }
     }
 
     void LayMine()

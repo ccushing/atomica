@@ -4,6 +4,8 @@
   "CoastDrag": 12,
   "LaserReload": 8,
   "RailReload": 3,
+  "BombReload": 60,
+  "BombSpeed": 68,
   "RailMagazineSize": 12,
   "MineLifetime": 120,
   "EnergyRefillSeconds": 300,

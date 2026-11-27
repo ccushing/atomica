@@ -38,7 +38,7 @@ Check("Muzzle inherits ship velocity and correct damage",()=>{var s=Quiet();s.Pl
 Check("Fire rate and opposite input neutrality",()=>{var s=Quiet();for(int i=0;i<60;i++)s.Step(1f/60,new(0,0,true));Assert(s.Bullets.Count<=4);Near(s.Player.Angle,0);});
 Check("Victory, defeat and restart",()=>{var s=Quiet();s.Enemies[0].Health=0;s.Step(.01f,new());Assert(s.State==MatchState.Victory);var r=new Simulation(s.Map);Assert(r.State==MatchState.Playing && r.Player.Health==100 && r.Kills==0);r.Player.Health=0;r.Step(.01f,new());Assert(r.State==MatchState.Defeat);});
 Check("Radar corners and center",()=>{var m=Map();var a=m.Radar(m.Size/2,new(10,20),new(200,100));Near(a.X,110);Near(a.Y,70);});
-Check("Bundled maps are valid and enemies reachable",()=>{foreach(var name in new[]{"kepler","foundry"}){var m=Arena.Parse(File.ReadAllText($"Prototype/Maps/{name}.csv"));foreach(var spawn in m.EnemyStarts)Assert(m.Path(spawn,m.PlayerStart).Count>0);}});
+Check("Bundled maps are valid and enemies reachable",()=>{foreach(var name in new[]{"kepler","foundry","labyrinth"}){var m=Arena.Parse(File.ReadAllText($"Prototype/Maps/{name}.csv"));foreach(var spawn in m.EnemyStarts)Assert(m.Path(spawn,m.PlayerStart).Count>0);}});
 Check("Invalid tuning rejected",()=>{try{Tuning.Parse("{\"ShotsPerSecond\":0}");}catch(FormatException){return;}throw new Exception("Invalid tuning accepted");});
 Check("Overlapping ships do not create invalid velocity",()=>{var s=Quiet();s.Enemies[0].Position=s.Player.Position;s.Step(.01f,new());Assert(float.IsFinite(s.Enemies[0].Velocity.X));});
 Check("Nonfinite tuning rejected",()=>{try{Tuning.Parse("{\"Acceleration\":1e39}");}catch(FormatException){return;}throw new Exception("Infinite acceleration accepted");});
@@ -70,7 +70,7 @@ Check("Coast drag is time based and does not oppose active thrust",()=>
 Check("Player rotation is fifty percent faster",()=>{var s=Quiet();s.Step(.5f,new(1));Near(s.Player.Angle,2.55f);});
 Check("Enemy selector supports every count and unique reachable spawns",()=>
 {
-    foreach(string name in new[]{"kepler","foundry"})
+    foreach(string name in new[]{"kepler","foundry","labyrinth"})
     {
         var m=Arena.Parse(File.ReadAllText($"Prototype/Maps/{name}.csv"));
         Assert(m.Width==(name=="kepler"?216:288) && m.Height==(name=="kepler"?162:216));
@@ -224,5 +224,66 @@ Check("Rail tuning validates reload and magazine size",()=>
     foreach(string json in new[]{"{\"RailReload\":0}","{\"RailReload\":1e39}","{\"RailMagazineSize\":0}","{\"RailMagazineSize\":257}"})
     {try{Tuning.Parse(json);throw new Exception("Invalid Rail Gun settings accepted");}catch(FormatException){}}
     var s=new Simulation(Map(),new Tuning{RailMagazineSize=3,RailReload=3});Assert(s.RailAmmo==3);
+});
+Check("Labyrinth has no isolated corridors or pickups",()=>
+{
+    var m=Arena.Parse(File.ReadAllText("Prototype/Maps/labyrinth.csv"));
+    int floor=0;
+    for(int y=0;y<m.Height;y++)for(int x=0;x<m.Width;x++)if(!m.IsWall(x,y))floor++;
+    Assert(m.ReachableCenters().Count==floor);
+    Assert(m.EnemyStarts.Count==15);
+    Assert(floor<m.Width*m.Height*.5f,"Labyrinth should be predominantly walls and narrow corridors");
+});
+Check("Tactical Bomb launches slowly in the facing direction independent of ship velocity",()=>
+{
+    var s=Quiet();s.Player.Position=new(300,300);s.Player.Velocity=new(500,200);s.Player.Angle=MathF.PI/2;
+    s.Step(0,new(0,0,true,5));Assert(s.Bomb!=null);Near(s.Bomb!.Velocity.X,68);Near(s.Bomb.Velocity.Y,0);
+    Near(s.Bomb.Position.X,308);Near(s.BombCooldown,60);Near(s.WeaponReadyIn,60);
+});
+Check("Tactical Bomb applies quadruple area damage once within five ship lengths",()=>
+{
+    var s=Quiet();s.Player.Position=new(300,400);s.Step(0,new(0,0,true,5));s.Bomb!.Position=new(300,300);
+    s.Enemies[0].Position=new(300,284);
+    s.Enemies.Add(new(){Id=2,Enemy=true,Position=new(460,300),Health=100,Cooldown=10000});
+    s.Enemies.Add(new(){Id=3,Enemy=true,Position=new(461,300),Health=100,Cooldown=10000});
+    s.Step(0,new());Assert(s.Bomb==null && s.BombBlasts.Count==1);Near(Simulation.BombRadius,160);
+    Assert(s.Enemies[0].Health==20 && s.Enemies[1].Health==20 && s.Enemies[2].Health==100 && s.Player.Health==100);
+    s.Step(0,new());Assert(s.Enemies[0].Health==20 && s.Enemies[1].Health==20);
+});
+Check("Tactical Bomb detonates at walls and blast respects shielding",()=>
+{
+    var s=Quiet();s.Player.Position=new(300,300);s.Step(0,new(0,0,true,5));
+    s.Bomb!.Position=new(100,40);s.Enemies[0].Position=new(100,100);
+    s.Step(.1f,new());Assert(s.Bomb==null && s.Enemies[0].Health==20);Near(s.BombBlasts[0].Position.Y,36);
+    s=Quiet();s.Player.Position=new(300,400);s.Step(0,new(0,0,true,5));s.Bomb!.Position=new(300,300);
+    s.Enemies[0].Position=new(300,284);s.Enemies.Add(new(){Id=2,Enemy=true,Position=new(400,300),Health=100,Cooldown=10000});
+    for(int y=1;y<s.Map.Height-1;y++)s.Map.Walls[11,y]=true;
+    s.Step(0,new());Assert(s.Enemies[0].Health==20 && s.Enemies[1].Health==100);
+});
+Check("Tactical Bomb recharges for sixty seconds across weapon switches",()=>
+{
+    var s=Quiet();s.Player.Position=new(300,50);s.Step(0,new(0,0,true,5));s.Step(.1f,new());Assert(s.Bomb==null);
+    s.Step(59.89f,new(0,0,true,5));Assert(s.Bomb==null && s.BombCooldown>0);
+    s.Step(.01f,new(0,0,false,0));Near(s.BombCooldown,0,.00001f);
+    s.Player.Position=new(300,300);s.Step(0,new(0,0,true,5));Assert(s.Bomb!=null);Near(s.BombCooldown,60);
+});
+Check("Tactical Bomb active limit persists even after recharge and resets on restart",()=>
+{
+    var s=new Simulation(Arena.Parse(Grid(120,120)),new Tuning{BombSpeed=1});s.Player.Position=new(2000,2000);s.Enemies[0].Cooldown=10000;
+    s.Step(0,new(0,0,true,5));var first=s.Bomb;s.Step(60,new(0,0,true,5));
+    Assert(ReferenceEquals(first,s.Bomb) && s.BombCooldown==0 && !s.Effects.Any(e=>e.Kind=="bomb-launch"));
+    var fresh=new Simulation(s.Map,s.Settings);Assert(fresh.Bomb==null && fresh.BombCooldown==0 && fresh.BombBlasts.Count==0);
+});
+Check("Fast enemies cannot cross a Tactical Bomb between frames",()=>
+{
+    var s=new Simulation(Map(),new Tuning{Acceleration=.001f,CoastDrag=0});s.Player.Position=new(300,400);
+    var e=s.Enemies[0];e.Position=new(200,300);e.Velocity=new(2000,0);e.Cooldown=10000;
+    s.Step(0,new(0,0,true,5));s.Bomb!.Position=new(300,300);s.Step(.1f,new());
+    Assert(s.Bomb==null && e.Health==20);
+});
+Check("Tactical Bomb tuning rejects invalid speed and recharge",()=>
+{
+    foreach(string key in new[]{"BombReload","BombSpeed"})foreach(string value in new[]{"0","-1","1e39"})
+    {try{Tuning.Parse("{\""+key+"\":"+value+"}");throw new Exception("Invalid bomb setting accepted");}catch(FormatException){}}
 });
 Console.WriteLine($"\n{passed} checks passed.");
