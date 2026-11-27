@@ -35,6 +35,37 @@ Check("Normal and ricochet hit once at full and half damage",()=>{foreach(int da
 Check("Wall shields ships from projectiles",()=>{var s=Quiet();s.Player.Position=new(100,100);s.Bullets.Add(new(){Position=new(50,100),Velocity=new(-1000,0),Enemy=true,Owner=1,Damage=20});s.Step(.1f,new());Assert(s.Player.Health==100);});
 Check("Owner immunity and enemy friendly fire",()=>{var s=Quiet();s.Bullets.Add(new(){Position=s.Player.Position,Velocity=Vector2.Zero,Owner=0,Damage=20});s.Step(.01f,new());Assert(s.Player.Health==100);s.Bullets.Clear();s.Bullets.Add(new(){Position=s.Enemies[0].Position,Velocity=Vector2.Zero,Owner=100,Enemy=true,Damage=20});s.Step(.01f,new());Assert(s.Enemies[0].Health==100);});
 Check("Muzzle inherits ship velocity and correct damage",()=>{var s=Quiet();s.Player.Velocity=new(50,0);s.Step(1f/60,new(0,0,true,1));Near(s.Bullets[0].Velocity.X,50);Near(s.Bullets[0].Velocity.Y,-680);Assert(s.Bullets[0].Damage==10);});
+Check("Every fired projectile inherits the full ship velocity at launch",()=>
+{
+    foreach(int weapon in new[]{0,1,4,5})
+    foreach(var drift in new[]{Vector2.Zero,new Vector2(90,-40),new Vector2(-250,130)})
+    foreach(float angle in new[]{0f,MathF.PI/2,.7f})
+    {
+        var s=Quiet();s.Player.Position=new(300,300);s.Player.Velocity=drift;s.Player.Angle=angle;
+        s.Step(0,new(0,0,true,weapon));
+        var velocity=weapon==5?s.Bomb!.Velocity:s.Bullets.Single().Velocity;
+        float speed=weapon==5?s.Settings.BombSpeed:s.Settings.MuzzleSpeed;
+        var expected=drift+new Vector2(MathF.Sin(angle),-MathF.Cos(angle))*speed;
+        Near(velocity.X,expected.X);Near(velocity.Y,expected.Y);
+        // Later ship motion must not change a projectile already in flight.
+        s.Player.Velocity=new(-900,600);s.Player.Angle+=1;s.Step(0,new());
+        var after=weapon==5?s.Bomb!.Velocity:s.Bullets.Single().Velocity;
+        Near(after.X,expected.X);Near(after.Y,expected.Y);
+    }
+});
+Check("Enemy bullets inherit their firing ship velocity",()=>
+{
+    var s=Quiet();s.Player.Position=new(300,300);var e=s.Enemies[0];
+    e.Position=new(450,300);e.Velocity=new(-50,25);e.Cooldown=0;
+    s.Step(0,new());var b=s.Bullets.Single();var expected=e.Velocity+e.Forward*s.Settings.MuzzleSpeed;
+    Assert(b.Enemy);Near(b.Velocity.X,expected.X);Near(b.Velocity.Y,expected.Y);
+});
+Check("Laser heading is unaffected by ship velocity",()=>
+{
+    var s=Quiet();s.Player.Position=new(300,300);s.Player.Velocity=new(500,200);
+    s.Step(0,new(0,0,true,2));var beam=s.Lasers.Single();
+    Near(beam.End.X,beam.Start.X);Assert(beam.End.Y<beam.Start.Y);
+});
 Check("Fire rate and opposite input neutrality",()=>{var s=Quiet();for(int i=0;i<60;i++)s.Step(1f/60,new(0,0,true));Assert(s.Bullets.Count<=4);Near(s.Player.Angle,0);});
 Check("Victory, defeat and restart",()=>{var s=Quiet();s.Enemies[0].Health=0;s.Step(.01f,new());Assert(s.State==MatchState.Victory);var r=new Simulation(s.Map);Assert(r.State==MatchState.Playing && r.Player.Health==100 && r.Kills==0);r.Player.Health=0;r.Step(.01f,new());Assert(r.State==MatchState.Defeat);});
 Check("Radar corners and center",()=>{var m=Map();var a=m.Radar(m.Size/2,new(10,20),new(200,100));Near(a.X,110);Near(a.Y,70);});
@@ -104,14 +135,22 @@ Check("Death laser hits only the first enemy for triple damage",()=>
     var s=Quiet();var e=s.Enemies[0];e.Position=new(144,95);
     s.Enemies.Add(new(){Id=2,Enemy=true,Position=new(144,60),Health=100,Cooldown=10000});
     s.Step(.001f,new(0,0,true,2));Assert(e.Health==40 && s.Enemies[1].Health==100);
-    Near(s.Lasers[0].End.Y,107,.1f);Assert(s.Bullets.Count==0);Near(s.LaserCooldown,8);
+    Near(s.Lasers[0].End.Y,117.5f,.1f);Assert(s.Bullets.Count==0);Near(s.LaserCooldown,8);
 });
 Check("Laser reaches a distant wall and cannot shoot through it",()=>
 {
     var m=Arena.Parse(Grid(100,24));var s=new Simulation(m);s.Player.Angle=MathF.PI/2;s.Enemies[0].Cooldown=10000;
-    s.Step(.001f,new(0,0,true,2));Near(s.Lasers[0].End.X,99*32,.1f);Assert(s.Lasers[0].End.X-s.Lasers[0].Start.X>2500);
+    s.Step(.001f,new(0,0,true,2));Near(s.Lasers[0].End.X,99*32-10.5f,.1f);Assert(s.Lasers[0].End.X-s.Lasers[0].Start.X>2500);
     var blocked=Quiet();blocked.Map.Walls[4,3]=true;blocked.Enemies[0].Position=new(144,80);
-    blocked.Step(.001f,new(0,0,true,2));Assert(blocked.Enemies[0].Health==100);Near(blocked.Lasers[0].End.Y,128,.1f);
+    blocked.Step(.001f,new(0,0,true,2));Assert(blocked.Enemies[0].Health==100);Near(blocked.Lasers[0].End.Y,138.5f,.1f);
+});
+Check("Wider Death Laser hits at its beam edge and misses outside it",()=>
+{
+    foreach(float offset in new[]{22f,23f})
+    {
+        var s=Quiet();s.Player.Position=new(300,300);s.Enemies[0].Position=new(300+offset,200);
+        s.Step(0,new(0,0,true,2));Assert(s.Enemies[0].Health==(offset==22?40:100));
+    }
 });
 Check("Laser cooldown survives switching and permits firing after reload",()=>
 {
@@ -234,10 +273,11 @@ Check("Labyrinth has no isolated corridors or pickups",()=>
     Assert(m.EnemyStarts.Count==15);
     Assert(floor<m.Width*m.Height*.5f,"Labyrinth should be predominantly walls and narrow corridors");
 });
-Check("Tactical Bomb launches slowly in the facing direction independent of ship velocity",()=>
+Check("Tactical Bomb has triple launch speed and inherits forward and sideways ship velocity",()=>
 {
     var s=Quiet();s.Player.Position=new(300,300);s.Player.Velocity=new(500,200);s.Player.Angle=MathF.PI/2;
-    s.Step(0,new(0,0,true,5));Assert(s.Bomb!=null);Near(s.Bomb!.Velocity.X,68);Near(s.Bomb.Velocity.Y,0);
+    Near(s.Settings.BombSpeed,204);
+    s.Step(0,new(0,0,true,5));Assert(s.Bomb!=null);Near(s.Bomb!.Velocity.X,704);Near(s.Bomb.Velocity.Y,200);
     Near(s.Bomb.Position.X,308);Near(s.BombCooldown,60);Near(s.WeaponReadyIn,60);
 });
 Check("Tactical Bomb applies quadruple area damage once within five ship lengths",()=>
@@ -246,7 +286,7 @@ Check("Tactical Bomb applies quadruple area damage once within five ship lengths
     s.Enemies[0].Position=new(300,284);
     s.Enemies.Add(new(){Id=2,Enemy=true,Position=new(460,300),Health=100,Cooldown=10000});
     s.Enemies.Add(new(){Id=3,Enemy=true,Position=new(461,300),Health=100,Cooldown=10000});
-    s.Step(0,new());Assert(s.Bomb==null && s.BombBlasts.Count==1);Near(Simulation.BombRadius,160);
+    s.Step(0,new());Assert(s.Bomb==null && s.BombBlasts.Count==1);Near(s.BombRadius,160);
     Assert(s.Enemies[0].Health==20 && s.Enemies[1].Health==20 && s.Enemies[2].Health==100 && s.Player.Health==100);
     s.Step(0,new());Assert(s.Enemies[0].Health==20 && s.Enemies[1].Health==20);
 });
@@ -285,5 +325,133 @@ Check("Tactical Bomb tuning rejects invalid speed and recharge",()=>
 {
     foreach(string key in new[]{"BombReload","BombSpeed"})foreach(string value in new[]{"0","-1","1e39"})
     {try{Tuning.Parse("{\""+key+"\":"+value+"}");throw new Exception("Invalid bomb setting accepted");}catch(FormatException){}}
+});
+Check("Bomb requires a second press to detonate and preserves recharge",()=>
+{
+    var s=Quiet();s.Player.Position=new(300,300);s.Enemies[0].Position=new(400,300);
+    s.Step(0,new(0,0,true,5));var bomb=s.Bomb;Assert(bomb!=null);
+    s.Step(.1f,new(0,0,true,5));Assert(ReferenceEquals(s.Bomb,bomb) && s.BombBlasts.Count==0);
+    s.Step(0,new(0,0,false,5));var position=bomb!.Position;float cooldown=s.BombCooldown;
+    s.Step(0,new(0,0,true,5));Assert(s.Bomb==null && s.BombBlasts.Count==1 && s.BombBlasts[0].Position==position);
+    Assert(s.Enemies[0].Health==20 && s.Player.Health==100);Near(s.BombCooldown,cooldown);
+    s.Step(0,new(0,0,true,5));Assert(s.BombBlasts.Count==1 && s.Enemies[0].Health==20);
+    s.Step(0,new(0,0,false,5));s.Step(0,new(0,0,true,5));Assert(s.Bomb==null && s.BombBlasts.Count==1);
+});
+Check("Other weapons and held fire across switches do not detonate a bomb",()=>
+{
+    var s=Quiet();s.Player.Position=new(300,300);s.Step(0,new(0,0,true,5));var bomb=s.Bomb;
+    s.Step(0,new(0,0,false,0));s.Step(0,new(0,0,true,0));Assert(s.Bullets.Count==1 && ReferenceEquals(bomb,s.Bomb));
+    s.Step(0,new(0,0,true,5));Assert(ReferenceEquals(bomb,s.Bomb));
+    s.Step(0,new(0,0,false,5));s.Step(0,new(0,0,true,5));Assert(s.Bomb==null && s.BombBlasts.Count==1);
+});
+Check("Remote blast respects walls and cannot auto-launch after recharge",()=>
+{
+    var s=Quiet();s.Player.Position=new(300,300);s.Enemies[0].Position=new(400,300);
+    for(int y=1;y<s.Map.Height-1;y++)s.Map.Walls[11,y]=true;
+    s.Step(0,new(0,0,true,5));s.Step(0,new(0,0,false,5));s.Step(0,new(0,0,true,5));
+    Assert(s.Bomb==null && s.Enemies[0].Health==100);
+    s.Step(60,new(0,0,true,5));Assert(s.Bomb==null && s.BombCooldown==0);
+    s.Step(0,new(0,0,false,5));s.Step(0,new(0,0,true,5));Assert(s.Bomb!=null);Near(s.BombCooldown,60);
+});
+Check("JSON configuration covers editable settings while missing values retain code defaults",()=>
+{
+    Tuning.Parse(File.ReadAllText("Prototype/tuning.json"));var defaults=new Tuning();
+    using var doc=System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(defaults));
+    var properties=typeof(Tuning).GetProperties().Where(p=>p.CanWrite).ToArray();
+    Assert(doc.RootElement.EnumerateObject().Count()==properties.Length);
+    foreach(var p in properties)
+    {
+        Assert(doc.RootElement.TryGetProperty(p.Name,out _),$"Missing config setting: {p.Name}");
+        Assert(Equals(p.GetValue(Tuning.Parse("{}")),p.GetValue(defaults)),$"Missing setting lost its default: {p.Name}");
+        Assert(Equals(p.GetValue(Tuning.Load(null)),p.GetValue(defaults)));
+    }
+});
+Check("Partial JSON overrides retain defaults and allow comments and trailing commas",()=>
+{
+    var t=Tuning.Parse("{ /* preference */ \"bombSpeed\":333, \"MutedAudio\":true, \"WindowWidth\":1600, }");
+    Near(t.BombSpeed,333);Assert(t.MutedAudio && t.WindowWidth==1600);Near(t.Acceleration,260);Near(t.BombReload,60);
+    Near(Tuning.Parse("{}").LaserWidth,21);
+});
+Check("Configuration rejects typos, duplicates, invalid types and unsafe combinations",()=>
+{
+    foreach(string json in new[]{"null","[]","{","{\"BombSpeeed\":4}","{\"BombSpeed\":3,\"bombspeed\":4}","{\"BombSpeed\":null}","{\"BombSpeed\":\"fast\"}","{\"LaserWidth\":100}","{\"BombBlastRadius\":-1}","{\"MaxEnemies\":2}","{\"EnemyRetreatDistance\":500}","{\"ShipRadius\":2}","{\"ShotsPerSecond\":60}","{\"CameraFollowRate\":1e39}","{\"RailDamage\":99}"})
+    {try{Tuning.Parse(json);throw new Exception("Invalid configuration accepted: "+json);}catch(FormatException){}}
+});
+Check("Configured weapon damage, timing and blast dimensions reach simulation",()=>
+{
+    var t=Tuning.Parse("{\"NormalDamage\":12,\"LaserDamageMultiplier\":2,\"LaserWidth\":10,\"LaserCoreWidth\":3,\"LaserVisibleSeconds\":0.8,\"RailDamageMultiplier\":0.25,\"RailFireRateMultiplier\":2,\"RailLifetimeMultiplier\":0.25,\"BombDamageMultiplier\":5,\"BombBlastRadius\":90,\"BombBlastVisibleSeconds\":1.5,\"BombSpeed\":300,\"BombReload\":12,\"MineDamageMultiplier\":3}");
+    var s=new Simulation(Map(),t);s.Player.Position=new(300,300);s.Enemies[0].Position=new(300,200);s.Enemies[0].Cooldown=10000;
+    s.Step(0,new(0,0,true,2));Assert(s.Enemies[0].Health==76);Near(s.Lasers[0].Life,.8f);Near(s.Lasers[0].End.Y,217);
+    s=new Simulation(Map(),t);s.Step(0,new(0,0,true,4));Assert(s.Bullets.Single().Damage==3);Near(s.Bullets[0].Lifetime,.75f);Near(s.RailShotCooldown,.125f);
+    s=new Simulation(Map(),t);s.Player.Position=new(300,300);s.Enemies[0].Position=new(360,292);s.Enemies[0].Cooldown=10000;
+    s.Step(0,new(0,0,true,5));Near(s.Bomb!.Velocity.Y,-300);Near(s.BombCooldown,12);Near(s.BombRadius,90);
+    s.Step(0,new(0,0,false,5));s.Step(0,new(0,0,true,5));Assert(s.Enemies[0].Health==40);Near(s.BombBlasts[0].Life,1.5f);Assert(t.MineDamage==36);
+});
+Check("Configured mine and pickup limits, intervals and healing are applied",()=>
+{
+    var t=Tuning.Parse("{\"MaxMines\":1,\"MinePlantInterval\":2,\"MineLifetime\":4,\"MineDamageMultiplier\":3,\"MaxEnergyBoosts\":2,\"EnergyHealFraction\":0.25,\"EnergyRefillSeconds\":10}");
+    var s=new Simulation(Map(),t);s.Enemies[0].Cooldown=10000;s.Player.Position=new(300,300);Assert(s.EnergyBoosts.Count==2);
+    s.Step(0,new(0,0,true,3));Near(s.MineCooldown,2);s.Player.Position=new(400,300);s.Step(3,new(0,0,true,3));Assert(s.Mines.Count==1);
+    s.Step(1,new());Assert(s.Mines.Count==0);s.Player.Health=50;s.EnergyBoosts.Clear();s.EnergyBoosts.Add(s.Player.Position);
+    s.Step(.01f,new());Assert(s.Player.Health==75);s.Step(6,new());Assert(s.EnergyBoosts.Count==2);
+    Assert(new Simulation(Map(),Tuning.Parse("{\"MaxEnergyBoosts\":0}")).EnergyBoosts.Count==0);
+});
+Check("Configured enemy count and initial delay reach spawning",()=>
+{
+    var t=Tuning.Parse("{\"MaxEnemies\":20,\"DefaultEnemyCount\":18,\"EnemyInitialFireDelay\":4,\"EnemyInitialFireStagger\":0.5}");
+    var s=new Simulation(Map(),t,t.DefaultEnemyCount);Assert(s.EnemyCount==18);Near(s.Enemies[0].Cooldown,5);
+    try{new Simulation(Map(),t,21);throw new Exception("Configured enemy cap ignored");}catch(ArgumentOutOfRangeException){}
+});
+Check("Side-mounted guns fire forward parallel bullets with normal stats and inherited drift",()=>
+{
+    foreach(float angle in new[]{0f,MathF.PI/2})
+    {
+        var s=Quiet();s.Player.Position=new(300,300);s.Player.Velocity=new(30,-40);s.Player.Angle=angle;
+        s.Step(0,new(0,0,true,6));Assert(s.Bullets.Count==2 && s.SideGunShotsRemaining==8);
+        for(int i=0;i<2;i++)
+        {
+            var b=s.Bullets[i];float side=i==0?-1:1;
+            Near(b.Position.X,300+(angle==0?side*9:0));Near(b.Position.Y,300+(angle==0?0:side*9));
+            Near(b.Velocity.X,30+(angle==0?0:680));Near(b.Velocity.Y,-40+(angle==0?-680:0));
+            Assert(b.Damage==s.Settings.NormalDamage && b.Owner==s.Player.Id && !b.Enemy && !b.Rail && !b.Bouncing);
+        }
+    }
+});
+Check("A tap fires nine paired Side Gun shots then enforces the Rail reload",()=>
+{
+    var s=Quiet();s.Player.Position=new(300,300);s.Step(0,new(0,0,true,6));
+    for(int i=0;i<4;i++)s.Step(1f/60,new(0,0,false,6));Assert(s.Bullets.Count==2);
+    s.Step(1f/60,new(0,0,false,6));Assert(s.Bullets.Count==4);
+    int emitted=4;
+    for(int i=0;i<35;i++){s.Step(1f/60,new(0,0,false,6));emitted+=s.Effects.Count(e=>e.Kind=="shot");}
+    Assert(emitted==18 && s.SideGunShotsRemaining==0);
+    Near(s.SideGunCooldown,s.Settings.RailReload);Near(s.WeaponReadyIn,s.Settings.RailReload);
+    s.Step(2.99f,new(0,0,true,6));Assert(!s.Effects.Any(e=>e.Kind=="shot"));
+    s.Step(.01f,new(0,0,true,6));Assert(s.Effects.Count(e=>e.Kind=="shot")==2 && s.SideGunShotsRemaining==8);
+});
+Check("Side Gun bullets hit targets ahead for normal damage and are stopped by walls",()=>
+{
+    var s=Quiet();s.Player.Position=new(300,300);s.Enemies[0].Position=new(291,250);
+    s.Enemies.Add(new(){Id=2,Enemy=true,Health=100,Position=new(309,250),Cooldown=10000});
+    s.Step(.06f,new(0,0,true,6));Assert(s.Enemies.All(e=>e.Health==80) && s.Player.Health==100 && s.Bullets.Count==0);
+    s=Quiet();s.Player.Position=new(300,44);s.Step(.02f,new(0,0,true,6));
+    Assert(s.Bullets.Count==0);
+});
+Check("Switching cancels remaining Side Gun shots without bypassing reload",()=>
+{
+    var s=Quiet();s.Player.Position=new(300,300);s.Step(0,new(0,0,true,6));
+    s.Step(0,new());Assert(s.SideGunShotsRemaining==0);Near(s.SideGunCooldown,3);
+    s.Step(1,new(0,0,true,6));Assert(!s.Effects.Any(e=>e.Kind=="shot"));Near(s.SideGunCooldown,2);
+    s.Step(1,new());s.Step(.99f,new(0,0,true,6));Assert(!s.Effects.Any(e=>e.Kind=="shot"));
+    s.Step(.01f,new(0,0,true,6));Assert(s.Effects.Count(e=>e.Kind=="shot")==2);
+    var reset=new Simulation(s.Map);Assert(reset.SideGunShotsRemaining==0 && reset.SideGunCooldown==0);
+});
+Check("Side Gun burst configuration and Rail reload are applied and validated",()=>
+{
+    var t=Tuning.Parse("{\"SideGunBurstSize\":2,\"SideGunShotsPerSecond\":10,\"RailReload\":1.25,\"NormalDamage\":31}");
+    var s=new Simulation(Map(),t);s.Enemies[0].Cooldown=10000;s.Player.Position=new(300,300);
+    s.Step(0,new(0,0,true,6));s.Step(.1f,new(0,0,false,6));Assert(s.Bullets.Count==4 && s.Bullets.All(b=>b.Damage==31));Near(s.SideGunCooldown,1.25f);
+    foreach(string json in new[]{"{\"SideGunBurstSize\":0}","{\"SideGunBurstSize\":33}","{\"SideGunShotsPerSecond\":0}","{\"SideGunShotsPerSecond\":1e39}","{\"PhysicsTicksPerSecond\":30,\"SideGunShotsPerSecond\":60}"})
+    {try{Tuning.Parse(json);throw new Exception("Invalid Side Gun tuning accepted");}catch(FormatException){}}
 });
 Console.WriteLine($"\n{passed} checks passed.");

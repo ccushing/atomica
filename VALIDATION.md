@@ -2,6 +2,44 @@
 
 Version 0.3 verified November 26, 2026. Earlier observations are identified below.
 
+## Side Guns
+
+- Added weapon 7, firing three pairs of normal-damage bullets perpendicular to the ship heading. Each bullet inherits ship velocity. A tap completes a burst, holding repeats after recharge, and switching weapons cancels the remaining burst and starts recharge.
+- Reload duration reads `RailReload` directly. Added `SideGunBurstSize` and `SideGunShotsPerSecond` to the central JSON configuration, preserving existing overrides.
+- All **80 automated checks passed**, including lateral geometry, inherited velocity, damage, walls, burst cadence, shared reload duration, switching, restart, and tuning validation. Compilation succeeded with zero warnings or errors.
+- Inspected `build/qa/side-guns.png`: six bullets appear in two opposing streams, the seven-weapon selector fits, and Side Guns shows its recharge state.
+
+## Central JSON configuration
+
+- Expanded `Prototype/tuning.json` to 86 editable gameplay, weapon, enemy, pickup, presentation, audio, and startup settings; code defaults and validation live in `Prototype/Core/Tuning.cs`. Existing JSON overrides were preserved, including bomb speed 300/recharge 30, Rail magazine 30, fire rate 6, projectile lifetime 5, and enemy speed 130.
+- Missing properties retain code defaults. Missing configuration uses defaults; malformed JSON, duplicates, unknown names, invalid types/ranges, or unsafe cross-setting combinations are rejected with an app warning and code-default fallback. JSON comments/trailing commas and case-insensitive setting names are supported.
+- All **75 automated checks passed**, including override/default handling, configuration validation, weapon stats/timing/radius, mine/pickup settings, and configurable enemy limits. Existing gameplay checks still pass against code defaults.
+- Inspected `build/qa/config-bomb.png` and `build/qa/config-rail.png`: JSON overrides load at startup and appear in the HUD (30-second bomb recharge and 30-round Rail magazine). HUD/help/effect sizes use the configured values.
+- Compilation succeeded; NuGet emitted NU1900 warnings because its vulnerability-data endpoint was unavailable.
+
+## Tactical Bomb remote detonation
+
+- With weapon 6 selected, a fresh Space press launches a bomb or detonates the active one. Holding fire cannot immediately detonate or automatically relaunch; other weapons do not trigger the bomb. Impact detonation is retained.
+- Remote and impact detonation share area damage and wall shielding. Detonation preserves the original recharge deadline. The active HUD prompts `SPACE: DETONATE`.
+- All **69 automated checks passed**, including new coverage for second-press detonation, damage once, held-key protection, weapon switching, cooldown preservation, and remote blast shielding. Compilation succeeded with zero warnings or errors.
+
+## Projectile velocity inheritance
+
+- All **66 automated checks passed**, including the full simulation soak.
+- Confirmed normal rounds, ricochets, Rail Gun rounds, Tactical Bombs, and enemy bullets already add their firing ship's full velocity. No gameplay change was needed. Laser direction and stationary mines are unchanged.
+- Added regression coverage across all four player projectile types, three headings, and stationary/forward/sideways/backward motion; verified subsequent ship movement does not steer launched projectiles. Separate checks cover enemy bullets and the laser exception.
+
+## Tactical Bomb velocity update
+
+- Increased default launch speed from 68 to 204 pixels/second. The bomb adds the ship's full velocity at firing, including sideways drift.
+- Updated the launch regression to verify 204 pixels/second plus both components of ship motion. A zero resulting velocity safely omits the directional visual trail.
+- Earlier Tactical Bomb speed observations below describe its original behavior.
+
+## Wider Death Laser
+
+- Tripled beam rendering: body 7 → 21 pixels, bright core 2 → 6, glow 20 → 60. Enemy and wall collision now use the 21-pixel beam body.
+- All **63 automated checks passed**, including beam-edge hit/miss coverage and updated first-hit/wall-contact checks. Build completed with zero warnings or errors. Visually inspected `build/qa/wide-laser.png`.
+
 ## Radar targeting marker
 
 - T toggles a straight heading line from the player ship's nose to the radar map boundary. It defaults off, follows rotation, and persists across match restarts within the session.

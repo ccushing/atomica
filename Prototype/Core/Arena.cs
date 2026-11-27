@@ -56,9 +56,9 @@ public sealed class Arena
     public Vector2 Radar(Vector2 point, Vector2 origin, Vector2 size) => origin + point / Size * size;
     public List<Vector2> ReachableCenters() => Reachable(PlayerStart).OrderBy(k=>k).Select(Center).ToList();
 
-    public List<Vector2> SelectEnemySpawns(int count)
+    public List<Vector2> SelectEnemySpawns(int count,int maximum=15)
     {
-        if(count<1 || count>15) throw new ArgumentOutOfRangeException(nameof(count),"Choose 1 to 15 enemies.");
+        if(count<1 || count>maximum) throw new ArgumentOutOfRangeException(nameof(count),$"Choose 1 to {maximum} enemies.");
         var chosen=new List<Vector2>();
         // Prefer authored spawn markers; use distinct reachable cell centers for additional ships.
         var candidates=Reachable(PlayerStart).Where(k=>k!=Key(PlayerStart)).OrderBy(k=>k).Select(Center).ToList();
