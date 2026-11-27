@@ -50,15 +50,17 @@ public static class Collision
         return new(Math.Max(0,enter),normal);
     }
 
-    public static void Move(Arena map, ref Vector2 position, ref Vector2 velocity, float dt, float radius)
+    public static void Move(Arena map, ref Vector2 position, ref Vector2 velocity, float dt, float radius, Action<Vector2,Vector2>? visitSegment=null)
     {
         float left=dt;
         for(int i=0;i<16 && left>0.0000001f;i++)
         {
             Vector2 delta=velocity*left;
             var hit=Wall(map,position,delta,radius);
-            if(hit is not { } h) { position+=delta; return; }
-            position+=delta*h.Time+h.Normal*.01f;
+            if(hit is not { } h) { visitSegment?.Invoke(position,position+delta);position+=delta; return; }
+            Vector2 contact=position+delta*h.Time;
+            visitSegment?.Invoke(position,contact);
+            position=contact+h.Normal*.01f;
             velocity=Vector2.Reflect(velocity,h.Normal);
             left*=1-h.Time;
         }

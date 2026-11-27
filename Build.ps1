@@ -14,9 +14,9 @@ if ($Test) {
     if ($LASTEXITCODE) { throw 'Tests failed' }
 }
 if ($Export) {
-    New-Item -ItemType Directory -Force -Path 'build\Atomica-v02','build\qa' | Out-Null
-    $export = Start-Process -FilePath $godot -ArgumentList '--headless','--path','Prototype','--export-release','"Windows Desktop"','../build/Atomica-v02/Atomica.exe','--quit' -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput 'build\qa\export.log' -RedirectStandardError 'build\qa\export-errors.log'
-    if ($export.ExitCode -or (Select-String -LiteralPath 'build\qa\export.log','build\qa\export-errors.log' -Pattern 'ERROR:')) { throw 'Godot export failed; inspect build\qa\export.log and export-errors.log' }
-    Copy-Item -LiteralPath 'Prototype\Maps' -Destination 'build\Atomica-v02' -Recurse -Force
-    Copy-Item -LiteralPath 'Prototype\tuning.json','README.md','THIRD_PARTY_NOTICES.txt','VALIDATION.md' -Destination 'build\Atomica-v02' -Force
+    New-Item -ItemType Directory -Force -Path 'build\Atomica-v03','build\qa' | Out-Null
+    $exportProcess = Start-Process -FilePath $godot -ArgumentList '--headless','--path','Prototype','--export-release','"Windows Desktop"','../build/Atomica-v03/Atomica.exe','--quit' -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput 'build\qa\export.log' -RedirectStandardError 'build\qa\export-errors.log'
+    if ($exportProcess.ExitCode -or (Select-String -LiteralPath 'build\qa\export.log','build\qa\export-errors.log' -Pattern 'ERROR:')) { throw 'Godot export failed; inspect build\qa\export.log and export-errors.log' }
+    Copy-Item -LiteralPath 'Prototype\Maps' -Destination 'build\Atomica-v03' -Recurse -Force
+    Copy-Item -LiteralPath 'Prototype\tuning.json','README.md','THIRD_PARTY_NOTICES.txt','VALIDATION.md' -Destination 'build\Atomica-v03' -Force
 }
