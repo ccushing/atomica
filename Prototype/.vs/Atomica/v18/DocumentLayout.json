@@ -1,0 +1,96 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "D:\\Documents\\2026\\Projects\\Atomica\\Prototype\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{2CFAC4BA-4C15-40EE-A34F-A08DE8AB47E8}|Atomica.csproj|d:\\documents\\2026\\projects\\atomica\\prototype\\core\\simulation.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{2CFAC4BA-4C15-40EE-A34F-A08DE8AB47E8}|Atomica.csproj|solutionrelative:core\\simulation.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{2CFAC4BA-4C15-40EE-A34F-A08DE8AB47E8}|Atomica.csproj|d:\\documents\\2026\\projects\\atomica\\prototype\\scripts\\game.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{2CFAC4BA-4C15-40EE-A34F-A08DE8AB47E8}|Atomica.csproj|solutionrelative:scripts\\game.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{2CFAC4BA-4C15-40EE-A34F-A08DE8AB47E8}|Atomica.csproj|d:\\documents\\2026\\projects\\atomica\\prototype\\core\\collision.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{2CFAC4BA-4C15-40EE-A34F-A08DE8AB47E8}|Atomica.csproj|solutionrelative:core\\collision.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{2CFAC4BA-4C15-40EE-A34F-A08DE8AB47E8}|Atomica.csproj|d:\\documents\\2026\\projects\\atomica\\prototype\\core\\arena.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{2CFAC4BA-4C15-40EE-A34F-A08DE8AB47E8}|Atomica.csproj|solutionrelative:core\\arena.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 3,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "Collision.cs",
+              "DocumentMoniker": "D:\\Documents\\2026\\Projects\\Atomica\\Prototype\\Core\\Collision.cs",
+              "RelativeDocumentMoniker": "Core\\Collision.cs",
+              "ToolTip": "D:\\Documents\\2026\\Projects\\Atomica\\Prototype\\Core\\Collision.cs",
+              "RelativeToolTip": "Core\\Collision.cs",
+              "ViewState": "AgIAAB4AAAAAAAAAAAAowAoAAAAFAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-11-27T00:51:55.259Z",
+              "EditorCaption": "",
+              "OwnerCaption": "%2"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "Arena.cs",
+              "DocumentMoniker": "D:\\Documents\\2026\\Projects\\Atomica\\Prototype\\Core\\Arena.cs",
+              "RelativeDocumentMoniker": "Core\\Arena.cs",
+              "ToolTip": "D:\\Documents\\2026\\Projects\\Atomica\\Prototype\\Core\\Arena.cs",
+              "RelativeToolTip": "Core\\Arena.cs",
+              "ViewState": "AgIAAFAAAAAAAAAAAAAAAAoAAAA0AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-11-27T00:51:35.067Z",
+              "EditorCaption": "",
+              "OwnerCaption": "%2"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "Game.cs",
+              "DocumentMoniker": "D:\\Documents\\2026\\Projects\\Atomica\\Prototype\\Scripts\\Game.cs",
+              "RelativeDocumentMoniker": "Scripts\\Game.cs",
+              "ToolTip": "D:\\Documents\\2026\\Projects\\Atomica\\Prototype\\Scripts\\Game.cs",
+              "RelativeToolTip": "Scripts\\Game.cs",
+              "ViewState": "AgIAAB0AAAAAAAAAAAAmwCAAAAACAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-11-26T23:37:10.174Z",
+              "EditorCaption": "",
+              "OwnerCaption": "%2"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Simulation.cs",
+              "DocumentMoniker": "D:\\Documents\\2026\\Projects\\Atomica\\Prototype\\Core\\Simulation.cs",
+              "RelativeDocumentMoniker": "Core\\Simulation.cs",
+              "ToolTip": "D:\\Documents\\2026\\Projects\\Atomica\\Prototype\\Core\\Simulation.cs",
+              "RelativeToolTip": "Core\\Simulation.cs",
+              "ViewState": "AgIAALAAAAAAAAAAAAAswF0AAAAwAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-11-26T23:35:47.137Z",
+              "EditorCaption": "",
+              "OwnerCaption": "%2"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{cce594b6-0c39-4442-ba28-10c64ac7e89f}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

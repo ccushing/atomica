@@ -10,7 +10,7 @@ public partial class Game : Node2D
     readonly Random random = new(42);
     readonly string[] mapNames={"KEPLER OUTPOST","THE FOUNDRY","THE LABYRINTH"};
     readonly string[] mapFiles={"kepler.csv","foundry.csv","labyrinth.csv"};
-    readonly string[] weaponNames={"NORMAL","RICOCHET","DEATH LASER","MINE","RAIL GUN","TACTICAL BOMB"};
+    readonly string[] weaponNames={"NORMAL","RICOCHET","DEATH LASER","MINE","RAIL GUN","TACTICAL BOMB","SIDE GUNS"};
     Arena arena=null!;
     Simulation sim=null!;
     Tuning tuning=new();
@@ -19,7 +19,7 @@ public partial class Game : Node2D
     ImageTexture? radarTexture;
     Vector2 camera;
     bool menu=true, paused, help, legacy, mutedAudio, radarAim;
-    int selected, weapon, frame, enemyCount=6;
+    int selected, weapon, frame, enemyCount;
     float clock, hitPulse, deathDelay;
     string error="", customName="";
     FileDialog picker=null!;
@@ -35,14 +35,25 @@ public partial class Game : Node2D
         font=ThemeDB.FallbackFont;
         oldPlayer=GD.Load<Texture2D>("res://Assets/Warbird.png");
         oldEnemy=GD.Load<Texture2D>("res://Assets/Terrier.png");
-        try { tuning=Tuning.Parse(ReadData("tuning.json")); } catch(Exception e) {error="Tuning could not be read. Using defaults. "+e.Message;}
-        LoadBuiltIn(0);
+        try
+        {
+            string local=System.IO.Path.Combine(OS.GetExecutablePath().GetBaseDir(),"tuning.json");
+            string? json=!OS.HasFeature("editor") && System.IO.File.Exists(local)?System.IO.File.ReadAllText(local):
+                Godot.FileAccess.FileExists("res://tuning.json")?Godot.FileAccess.GetFileAsString("res://tuning.json"):null;
+            tuning=Tuning.Load(json);
+        }
+        catch(Exception e){error="tuning.json ignored; using code defaults. "+e.Message;GD.PushWarning(error);}
+        enemyCount=tuning.DefaultEnemyCount;mutedAudio=tuning.MutedAudio;legacy=tuning.OriginalShipArt;radarAim=tuning.RadarAimEnabled;
+        Engine.PhysicsTicksPerSecond=tuning.PhysicsTicksPerSecond;
+        if(tuning.Fullscreen)DisplayServer.WindowSetMode(DisplayServer.WindowMode.Fullscreen);
+        else GetWindow().Size=new Vector2I(tuning.WindowWidth,tuning.WindowHeight);
+        LoadBuiltIn(tuning.DefaultArenaIndex);
         picker=new FileDialog { FileMode=FileDialog.FileModeEnum.OpenFile,Access=FileDialog.AccessEnum.Filesystem,Title="Load an Atomica CSV arena",Size=new Vector2I(900,600),UseNativeDialog=true };
         picker.AddFilter("*.csv","Atomica maps");
         picker.FileSelected+=LoadCustom;
         AddChild(picker);
-        shotSound=new AudioStreamPlayer{Stream=Tone(false),VolumeDb=-23};AddChild(shotSound);
-        hitSound=new AudioStreamPlayer{Stream=Tone(true),VolumeDb=-15};AddChild(hitSound);
+        shotSound=new AudioStreamPlayer{Stream=Tone(false),VolumeDb=tuning.ShotVolumeDb};AddChild(shotSound);
+        hitSound=new AudioStreamPlayer{Stream=Tone(true),VolumeDb=tuning.HitVolumeDb};AddChild(hitSound);
         foreach(string arg in OS.GetCmdlineUserArgs())
         {
             if(arg.StartsWith("--capture=")) capture=arg[10..];
@@ -73,7 +84,7 @@ public partial class Game : Node2D
         {
             sim.Player.Health=20;
             sim.Bullets.Add(new(){Position=sim.Player.Position,Enemy=true,Owner=1,Damage=20});
-            sim.Step(1f/60,new());ShowEffects();deathDelay=scenario=="explosion"?1.2f:0;
+            sim.Step(1f/60,new());ShowEffects();deathDelay=scenario=="explosion"?tuning.DeathDelaySeconds:0;
         }
         else if(scenario=="arsenal")
         {
@@ -88,8 +99,14 @@ public partial class Game : Node2D
             weapon=5;
             sim.Enemies[0].Position=sim.Player.Position+new V(0,-200);
             sim.Enemies[0].Cooldown=10000;
-            int ticks=scenario=="bomb"?24:160;
+            int ticks=scenario=="bomb"?24:(int)MathF.Ceiling(176/tuning.BombSpeed*60)+5;
             for(int i=0;i<ticks;i++)sim.Step(1f/60,new(0,0,i==0,5));
+            ShowEffects();
+        }
+        else if(scenario=="side-guns")
+        {
+            weapon=6;
+            for(int i=0;i<16;i++)sim.Step(1f/60,new(0,0,i==0,6));
             ShowEffects();
         }
         else if(scenario is "rail" or "rail-reload")
@@ -146,8 +163,8 @@ public partial class Game : Node2D
         float thrust=(Input.IsPhysicalKeyPressed(Key.Up)?1:0)-(Input.IsPhysicalKeyPressed(Key.Down)?1:0);
         int health=sim.Player.Health;
         sim.Step((float)delta,new Command(turn,thrust,Input.IsPhysicalKeyPressed(Key.Space),weapon));
-        if(sim.Player.Health<health) hitPulse=.25f;
-        if(sim.State==MatchState.Defeat)deathDelay=1.2f;
+        if(sim.Player.Health<health) hitPulse=tuning.HitPulseSeconds;
+        if(sim.State==MatchState.Defeat)deathDelay=tuning.DeathDelaySeconds;
         ShowEffects();
     }
     void ShowEffects()
@@ -156,13 +173,13 @@ public partial class Game : Node2D
         {
             if(effect.Kind is "shot" or "laser" or "rail" or "bomb-launch") {if(!effect.Enemy && !mutedAudio){shotSound.PitchScale=effect.Kind=="laser"?.45f:effect.Kind=="bomb-launch"?.3f:effect.Kind=="rail"?1.7f:1;shotSound.Play();}continue;}
             bool explosion=effect.Kind is "destroy" or "mine" or "bomb";
-            int count=explosion?90:7;
+            int count=explosion?tuning.ExplosionParticleCount:tuning.SparkParticleCount;
             Color c=effect.Kind=="energy"?new Color("65ff84"):explosion?amber:effect.Enemy?red:mint;
             for(int i=0;i<count;i++)
             {
                 float a=(float)random.NextDouble()*MathF.Tau;
-                float speed=30+(float)random.NextDouble()*(explosion?320:180);
-                particles.Add(new(){P=G(effect.Position),V=new Vector2(MathF.Cos(a),MathF.Sin(a))*speed,Life=explosion?1.2f:.3f,Max=explosion?1.2f:.3f,Color=c});
+                float speed=tuning.ParticleMinSpeed+(float)random.NextDouble()*(explosion?tuning.ExplosionParticleSpeedSpread:tuning.SparkParticleSpeedSpread);
+                particles.Add(new(){P=G(effect.Position),V=new Vector2(MathF.Cos(a),MathF.Sin(a))*speed,Life=explosion?tuning.ExplosionParticleLifetime:tuning.SparkParticleLifetime,Max=explosion?tuning.ExplosionParticleLifetime:tuning.SparkParticleLifetime,Color=c});
             }
             if(!mutedAudio && effect.Kind is "hit" or "destroy" or "mine" or "bomb") hitSound.Play();
         }
@@ -176,7 +193,7 @@ public partial class Game : Node2D
             foreach(var p in particles){p.Life-=(float)delta;p.P+=p.V*(float)delta;}
             particles.RemoveAll(p=>p.Life<=0);
         }
-        if(sim!=null)camera=camera.Lerp(G(sim.Player.Position),1-MathF.Exp(-(float)delta*10));
+        if(sim!=null)camera=camera.Lerp(G(sim.Player.Position),1-MathF.Exp(-(float)delta*tuning.CameraFollowRate));
         QueueRedraw();
         if(capture!=null && frame==15) Capture();
     }
@@ -214,6 +231,7 @@ public partial class Game : Node2D
             case Key.Key4:if(!menu)weapon=3;break;
             case Key.Key5:if(!menu)weapon=4;break;
             case Key.Key6:if(!menu)weapon=5;break;
+            case Key.Key7:if(!menu)weapon=6;break;
             case Key.Enter:if(menu)Start();else if(paused)paused=false;else if(sim.State!=MatchState.Playing)Start();break;
             case Key.R:if(!menu && (paused || sim.State!=MatchState.Playing))Start();break;
         }
@@ -290,21 +308,21 @@ public partial class Game : Node2D
             Vector2 p=World(G(bomb.Position));
             DrawCircle(p,12,new Color(amber,.18f));DrawCircle(p,6,amber);
             DrawArc(p,9,0,MathF.Tau,24,ink,1.5f,true);
-            DrawLine(p,p-G(V.Normalize(bomb.Velocity))*24,new Color(amber,.65f),3,true);
+            if(bomb.Velocity.LengthSquared()>1e-8f)DrawLine(p,p-G(V.Normalize(bomb.Velocity))*24,new Color(amber,.65f),3,true);
         }
         foreach(var blast in sim.BombBlasts)
         {
-            Vector2 p=World(G(blast.Position));float alpha=blast.Life/.6f;
-            DrawCircle(p,Simulation.BombRadius,new Color(amber,.12f*alpha));
-            DrawArc(p,Simulation.BombRadius,0,MathF.Tau,96,new Color(amber,alpha),3,true);
-            DrawArc(p,Simulation.BombRadius*(1-alpha),0,MathF.Tau,64,new Color(ink,alpha),4,true);
+            Vector2 p=World(G(blast.Position));float alpha=blast.Life/tuning.BombBlastVisibleSeconds;
+            DrawCircle(p,sim.BombRadius,new Color(amber,.12f*alpha));
+            DrawArc(p,sim.BombRadius,0,MathF.Tau,96,new Color(amber,alpha),3,true);
+            DrawArc(p,sim.BombRadius*(1-alpha),0,MathF.Tau,64,new Color(ink,alpha),4,true);
         }
         foreach(var beam in sim.Lasers)
         {
-            Vector2 start=World(G(beam.Start)),end=World(G(beam.End));float alpha=Math.Clamp(beam.Life/.3f,0,1);
-            DrawLine(start,end,new Color(1,.2f,.6f,alpha*.16f),20,true);
-            DrawLine(start,end,new Color(1,.3f,.65f,alpha),7,true);
-            DrawLine(start,end,new Color(1,.92f,.98f,alpha),2,true);
+            Vector2 start=World(G(beam.Start)),end=World(G(beam.End));float alpha=Math.Clamp(beam.Life/tuning.LaserVisibleSeconds,0,1);
+            DrawLine(start,end,new Color(1,.2f,.6f,alpha*.16f),tuning.LaserGlowWidth,true);
+            DrawLine(start,end,new Color(1,.3f,.65f,alpha),tuning.LaserWidth,true);
+            DrawLine(start,end,new Color(1,.92f,.98f,alpha),tuning.LaserCoreWidth,true);
         }
         foreach(var b in sim.Bullets)
         {
@@ -317,9 +335,9 @@ public partial class Game : Node2D
         foreach(var part in particles)DrawCircle(World(part.P),2,new Color(part.Color,part.Life/part.Max));
         if(deathDelay>0)
         {
-            Vector2 p=World(G(sim.Player.Position));float age=1.2f-deathDelay;
+            Vector2 p=World(G(sim.Player.Position));float age=tuning.DeathDelaySeconds-deathDelay;
             DrawCircle(p,Math.Max(1,30-age*40),new Color(1,.9f,.55f,Math.Max(0,1-age*3)));
-            DrawArc(p,12+age*190,0,MathF.Tau,80,new Color(amber,deathDelay/1.2f),3,true);
+            DrawArc(p,12+age*190,0,MathF.Tau,80,new Color(amber,deathDelay/Math.Max(.001f,tuning.DeathDelaySeconds)),3,true);
         }
         if(hitPulse>0)DrawRect(new Rect2(Vector2.Zero,Size),new Color(1,.2f,.25f,hitPulse*.22f));
     }
@@ -378,8 +396,8 @@ public partial class Game : Node2D
         Small("ENEMY SHIPS",x,countY+29);
         Button("−",new(x+140,countY,46,44),()=>enemyCount=Math.Max(1,enemyCount-1));
         Text(enemyCount.ToString("00"),new(x+206,countY+30),25,mint);
-        Button("+",new(x+260,countY,46,44),()=>enemyCount=Math.Min(15,enemyCount+1));
-        Small("1–15  /  YOUR CHOICE",x+326,countY+29);
+        Button("+",new(x+260,countY,46,44),()=>enemyCount=Math.Min(tuning.MaxEnemies,enemyCount+1));
+        Small($"1–{tuning.MaxEnemies}  /  YOUR CHOICE",x+326,countY+29);
         float actionY=cardsY+230;
         Button("LAUNCH  /  ENTER",new(x,actionY,260,52),Start,true);
         Button("LOAD CSV",new(x+278,actionY,150,52),()=>picker.PopupCentered());
@@ -387,7 +405,7 @@ public partial class Game : Node2D
         if(customName!="")Text("CUSTOM ARENA  /  "+customName,new(x,actionY+85),16,mint);
         if(error!="")Wrapped(error,new(x,actionY+90),Size.X-2*x,16,red);
         float foot=Size.Y-75;
-        Small("ARROWS  Rotate & thrust     SPACE  Fire / plant     1–6  Weapons",x,foot);
+        Small("ARROWS  Rotate & thrust     SPACE  Fire / plant     1–7  Weapons",x,foot);
         Small("F11  Fullscreen     M  Sound "+(mutedAudio?"off":"on")+"     V  "+(legacy?"Original ship art":"Vector ship art"),x,foot+25);
         Small("PROTOTYPE  0.4",Size.X-190,foot+25);
     }
@@ -404,9 +422,9 @@ public partial class Game : Node2D
         DrawWeaponSelector(new Rect2(22,bottom-74,Size.X-328,62));
         Box(new Rect2(22,bottom,284,84),new Color(bg,.95f));
         Small("HULL INTEGRITY",40,bottom+25);
-        Text((100*sim.Player.Health/tuning.Health)+"%",new(242,bottom+26),18,sim.Player.Health<35?red:mint);
+        Text((100*sim.Player.Health/tuning.Health)+"%",new(242,bottom+26),18,100f*sim.Player.Health/tuning.Health<tuning.LowHullPercent?red:mint);
         DrawRect(new Rect2(40,bottom+40,246,7),line);
-        DrawRect(new Rect2(40,bottom+40,246f*sim.Player.Health/tuning.Health,7),sim.Player.Health<35?red:mint);
+        DrawRect(new Rect2(40,bottom+40,246f*sim.Player.Health/tuning.Health,7),100f*sim.Player.Health/tuning.Health<tuning.LowHullPercent?red:mint);
         Small($"VELOCITY  {sim.Player.Velocity.Length():0000} px/s",40,bottom+69);
         Box(new Rect2(322,bottom,308,84),new Color(bg,.95f));
         Small("ACTIVE WEAPON  /  "+(weapon+1).ToString("00"),340,bottom+25);
@@ -414,13 +432,14 @@ public partial class Game : Node2D
         string detail=weapon switch {
             0=>$"{tuning.NormalDamage} DAMAGE  /  DIRECT FIRE",
             1=>$"{tuning.BouncingDamage} DAMAGE  /  {tuning.MaxBounces} BOUNCES",
-            2=>$"{tuning.NormalDamage*3} DAMAGE  /  "+(sim.LaserCooldown>0?$"RELOAD {sim.LaserCooldown:0.0}s":"READY"),
-            3=>$"{tuning.NormalDamage*2} DAMAGE  /  {sim.Mines.Count}/4 PLANTED",
-            4=>sim.RailCooldown>0?$"RECHARGING  {sim.RailCooldown:0.0}s":$"{sim.RailAmmo}/{tuning.RailMagazineSize} ROUNDS  /  {tuning.ShotsPerSecond*3:0.#} PER SEC",
-            _=>(sim.Bomb!=null?"ACTIVE  /  ":"")+(sim.BombCooldown>0?$"RECHARGE {sim.BombCooldown:0.0}s":sim.Bomb!=null?"AWAITING IMPACT":$"{tuning.NormalDamage*4} DAMAGE  /  READY") };
+            2=>$"{tuning.LaserDamage} DAMAGE  /  "+(sim.LaserCooldown>0?$"RELOAD {sim.LaserCooldown:0.0}s":"READY"),
+            3=>$"{tuning.MineDamage} DAMAGE  /  {sim.Mines.Count}/{tuning.MaxMines} PLANTED",
+            4=>sim.RailCooldown>0?$"RECHARGING  {sim.RailCooldown:0.0}s":$"{sim.RailAmmo}/{tuning.RailMagazineSize} ROUNDS  /  {tuning.ShotsPerSecond*tuning.RailFireRateMultiplier:0.#} PER SEC",
+            5=>sim.Bomb!=null?"SPACE: DETONATE"+(sim.BombCooldown>0?$"  /  {sim.BombCooldown:0.0}s":""):sim.BombCooldown>0?$"RECHARGE {sim.BombCooldown:0.0}s":$"{tuning.BombDamage} DAMAGE  /  READY",
+            _=>sim.SideGunCooldown>0?$"RELOAD {sim.SideGunCooldown:0.0}s":sim.SideGunShotsRemaining>0?$"BURST  /  {sim.SideGunShotsRemaining} PAIRS LEFT":$"{tuning.NormalDamage} DAMAGE  /  {tuning.SideGunBurstSize} PAIRS" };
         Small(detail,340,bottom+72);
-        Small("1–6  SWITCH     SPACE  FIRE / PLANT",650,Size.Y-67);
-        Small($"ENERGY  {sim.EnergyBoosts.Count}/15  ·  REFILL {TimeSpan.FromSeconds(Math.Ceiling(sim.EnergyRefillIn)).ToString(@"mm\:ss")}",650,Size.Y-41);
+        Small("1–7  SWITCH     SPACE  FIRE / PLANT",650,Size.Y-67);
+        Small($"ENERGY  {sim.EnergyBoosts.Count}/{tuning.MaxEnergyBoosts}  ·  REFILL {TimeSpan.FromSeconds(Math.Ceiling(sim.EnergyRefillIn)).ToString(@"mm\:ss")}",650,Size.Y-41);
         DrawRadar(new Rect2(Size.X-284,Size.Y-238,262,216));
     }
     void DrawWeaponSelector(Rect2 bounds)
@@ -434,7 +453,9 @@ public partial class Game : Node2D
             Box(r,active?new Color("193c40"):new Color(bg,.95f));
             DrawRect(r,active?mint:line,false,active?2:1);
             Text((i+1).ToString(),r.Position+new Vector2(12,27),20,active?mint:ink);
-            Text(weaponNames[i],r.Position+new Vector2(36,26),15,active?ink:muted);
+            int labelSize=15;
+            while(labelSize>10 && font.GetStringSize(weaponNames[i],HorizontalAlignment.Left,-1,labelSize).X>width-44)labelSize--;
+            Text(weaponNames[i],r.Position+new Vector2(36,26),labelSize,active?ink:muted);
             Text(active?"SELECTED":"PRESS "+(i+1),r.Position+new Vector2(36,47),12,active?mint:muted);
         }
     }
@@ -487,10 +508,10 @@ public partial class Game : Node2D
         buttons.Clear();DrawRect(new Rect2(Vector2.Zero,Size),new Color(bg,.96f));
         Vector2 p=Size/2-new Vector2(350,300);
         Small("PILOT BRIEFING",p.X,p.Y);Text("THE FLIGHT MANUAL",p+new Vector2(0,51),36,ink);
-        string[] rows={"LEFT / RIGHT       Rotate the ship","UP / DOWN          Forward / reverse thrust","SPACE              Fire weapon / plant a mine","1 / 2              Normal / ricochet rounds","3 / 4 / 5 / 6      Laser / mine / Rail Gun / Tactical Bomb","ESC / F11          Pause / fullscreen","T / M / V          Radar aim / sound / original ship art"};
+        string[] rows={"LEFT / RIGHT       Rotate the ship","UP / DOWN          Forward / reverse thrust","SPACE              Fire weapon / plant a mine","1 / 2 / 7          Normal / ricochet / Side Guns","3 / 4 / 5 / 6      Laser / mine / Rail Gun / Tactical Bomb","ESC / F11          Pause / fullscreen","T / M / V          Radar aim / sound / original ship art"};
         for(int i=0;i<rows.Length;i++)Text(rows[i],p+new Vector2(0,104+i*36),19,i%2==0?ink:muted);
         Wrapped("Release thrust to coast gently to a stop. Turn to face your direction of travel and use reverse thrust to brake faster. Walls bounce you safely; enemy bullets do not.",p+new Vector2(0,386),700,19,mint);
-        Wrapped("Bomb: 4× damage, 5-ship-length radius, one active, 60s recharge; slow launch, explodes on impact. Rail: half damage/range, 3× fire rate, 12 rounds, 3s recharge. Laser: 3× damage, 8s reload. Mines: 2× damage, four active. Boosts: +10% hull.",p+new Vector2(0,472),700,17,muted);
+        Wrapped($"Bomb: Space to launch, again to detonate; also explodes on impact. {tuning.BombDamage} damage, {tuning.BombBlastRadius:0.#}px radius, {tuning.BombReload:0.#}s recharge. Rail: {tuning.RailDamage} damage, {tuning.RailMagazineSize} rounds, {tuning.RailReload:0.#}s recharge. Laser: {tuning.LaserDamage} damage, {tuning.LaserReload:0.#}s reload. Mines: {tuning.MineDamage} damage, {tuning.MaxMines} active.",p+new Vector2(0,472),700,17,muted);
         Button("READY TO FLY  /  ESC",new(p+new Vector2(0,545),new Vector2(300,50)),()=>help=false,true);
     }
     void Wrapped(string text,Vector2 p,float width,int size,Color color)
